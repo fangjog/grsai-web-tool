@@ -4,8 +4,7 @@ import time
 from PIL import Image
 import io
 
-# 你的 Grsai API Key (在服务端写死，绝不泄露给客户)
-GRSAI_API_KEY = "sk-7b4232dd897f426f9e7b3145073a59b8" 
+GRSAI_API_KEY = st.secrets["GRSAI_API_KEY"]
 
 # 简单的卡密验证系统 (正式商用可以对接发卡平台API)
 VALID_KEYS = ["vip888", "test1234"]
