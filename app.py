@@ -87,6 +87,3 @@ if st.button("✨ 立即生成 (消耗1次额度)"):
                 status_text.error(f"提交失败：{sub_res}")
         except Exception as e:
             status_text.error(f"网络错误：{e}")
-streamlit
-requests
-pillow
