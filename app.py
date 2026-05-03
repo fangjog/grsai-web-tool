@@ -16,7 +16,7 @@ import invoke_canvas
 # ==========================================
 # 0. 网页基础配置
 # ==========================================
-st.set_page_config(page_title="AI Pro Workspace V5.0", page_icon="🚀", layout="wide")
+st.set_page_config(page_title="AI Pro Workspace V5.1", page_icon="🚀", layout="wide")
 
 # ==========================================
 # 🌟🌟🌟🌟🌟 【管理员专用配置区】 🌟🌟🌟🌟🌟
@@ -75,6 +75,9 @@ def deduct_balance(key, amount):
     usage[key] = spent + amount
     save_json(USAGE_FILE, usage)
 
+# 将余额存入 session_state 供其他模块（如 invoke_canvas）随时读取
+st.session_state.balance_points = get_balance(user_key)
+
 if 'tasks' not in st.session_state: st.session_state.tasks = load_json(TASKS_FILE)
 
 def clean_and_get_tasks():
@@ -121,21 +124,40 @@ def show_progress_dialog(task_id, prompt_text, active_user_key):
                     img_url = q_res["data"]["results"][0]["url"]
                     deduct_balance(active_user_key, IMAGE_COST) # 成功后扣款
                     status_text.success("✅ **生成成功！(已自动扣除本次制图额度)**")
+                    
+                    # 兼容双列表：主大厅和画布独立大厅
                     for t in st.session_state.tasks:
                         if t['task_id'] == task_id:
                             t['status'] = 'succeeded'
                             t['url'] = img_url
                     save_json(TASKS_FILE, st.session_state.tasks)
+                    
+                    if 'invoke_tasks_list' in st.session_state:
+                        for t in st.session_state.invoke_tasks_list:
+                            if t['task_id'] == task_id:
+                                t['status'] = 'succeeded'
+                                t['url'] = img_url
+                        save_json("invoke_workspace_project.json", st.session_state.invoke_tasks_list)
+                    
                     time.sleep(1.5)
                     st.rerun()
                 elif status == "failed":
                     reason = q_res["data"].get("failure_reason", "未知错误")
                     status_text.error(f"❌ **失败:** {reason} (失败不扣除额度)")
+                    
                     for t in st.session_state.tasks:
                         if t['task_id'] == task_id:
                             t['status'] = 'failed'
                             t['reason'] = reason
                     save_json(TASKS_FILE, st.session_state.tasks)
+                    
+                    if 'invoke_tasks_list' in st.session_state:
+                        for t in st.session_state.invoke_tasks_list:
+                            if t['task_id'] == task_id:
+                                t['status'] = 'failed'
+                                t['reason'] = reason
+                        save_json("invoke_workspace_project.json", st.session_state.invoke_tasks_list)
+                        
                     break
         except: pass
         time.sleep(3)
@@ -143,8 +165,7 @@ def show_progress_dialog(task_id, prompt_text, active_user_key):
 # ==========================================
 # 侧边栏导航与状态
 # ==========================================
-current_balance = get_balance(user_key)
-max_images = int(current_balance // IMAGE_COST)
+max_images = int(st.session_state.balance_points // IMAGE_COST)
 
 st.sidebar.markdown(f'剩余可制图数量: <span style="color:#FF4B4B; font-weight:bold; font-size:18px;">{max_images}</span> 张', unsafe_allow_html=True)
 st.sidebar.divider()
@@ -200,7 +221,7 @@ if menu in ["✍️ 文生图", "🖼️ 图生图"]:
             btn_submit = st.button("✨ 提交任务 (图生图)", type="primary", key="btn_img2img")
 
         if btn_submit:
-            if get_balance(user_key) < IMAGE_COST:
+            if st.session_state.balance_points < IMAGE_COST:
                 st.error("❌ 当前激活码额度不足，无法生成！")
             elif not prompt_txt:
                 st.error("❌ 请输入提示词！")
@@ -264,5 +285,11 @@ if menu in ["✍️ 文生图", "🖼️ 图生图"]:
 
 # --- 路由 3：独立出去的画布工作台 ---
 elif menu == "🎨 专业画布工作台":
-    # 调用独立文件中的渲染函数，并将 api_key 传过去备用
-    invoke_canvas.render_canvas_workspace(GRSAI_API_KEY)
+    # 🌟 修复点在这里：严格传入 3 个参数 (API Key, 用户激活码, 图片成本)
+    invoke_canvas.render_canvas_workspace(GRSAI_API_KEY, user_key, IMAGE_COST)
+    
+    # 监听是否在 invoke_canvas 里按下了追踪进度按钮
+    if 'invoke_tasks_accounted' in st.session_state and st.session_state.invoke_tasks_accounted:
+        task = st.session_state.invoke_tasks_accounted
+        st.session_state.invoke_tasks_accounted = None # 清空标志
+        show_progress_dialog(task['task_id'], task['prompt'], user_key)
