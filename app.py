@@ -44,9 +44,10 @@ KEY_MAP = {
     "test1234": "API_TEST",
     "123": "API_123",
     "free_trial": "GRSAI_API_KEY"
+    "laoxi": "API_LAOXI"
 }
 # 恢复正常的商业额度
-KEY_POINTS = {"vip888": 3000, "test1234": 5000, "123": 5000, "free_trial": 600}
+KEY_POINTS = {"vip888": 1800, "test1234": 5000, "123": 5000, "free_trial": 600, "laoxi": 100000}
 # 单张成本
 IMAGE_COST = 600
 
