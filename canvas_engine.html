@@ -2,137 +2,161 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <title>AI Pro Canvas Engine</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tldraw AI Workspace</title>
+    <link rel="stylesheet" href="https://unpkg.com/@tldraw/tldraw@2.1.4/tldraw.css" />
     <style>
-        body { margin: 0; padding: 0; background-color: #f0f2f5; height: 100vh; overflow: hidden; }
-        .canvas-container-wrapper { width: 100vw; height: 100vh; position: relative; overflow: hidden; cursor: default; }
+        body { margin: 0; padding: 0; height: 100vh; overflow: hidden; font-family: sans-serif; background: #f8f9fa; }
+        #root { width: 100vw; height: 100vh; }
         
-        /* 悬浮工具栏 (吸附在元素上方) */
-        .context-toolbar {
-            position: absolute; display: none; background: white; border-radius: 20px; padding: 6px 16px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.15); border: 1px solid #eee; z-index: 1000;
-            white-space: nowrap; font-size: 13px; color: #333; pointer-events: auto; gap: 16px; align-items: center;
+        /* 我们自定义的 AI 数据提取悬浮栏 */
+        .ai-toolbar {
+            position: absolute; bottom: 25px; left: 50%; transform: translateX(-50%);
+            z-index: 1000; display: flex; gap: 15px;
+            background: white; padding: 12px 24px; border-radius: 20px;
+            box-shadow: 0 8px 30px rgba(0,0,0,0.12); border: 1px solid #eaeaea;
         }
-        .context-item { cursor: pointer; color: #333; transition: color 0.2s; display: flex; align-items: center; gap: 5px; }
-        .context-item:hover { color: #00c2ff; }
-        #file-input { display: none; }
+        .btn {
+            padding: 10px 20px; border: none; border-radius: 10px; cursor: pointer;
+            font-size: 15px; font-weight: 800; transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            background: #f0f2f5; color: #333; display: flex; align-items: center; gap: 8px;
+        }
+        .btn:hover { background: #e4e6e9; transform: translateY(-2px); }
+        .btn-primary { background: #00c2ff; color: white; }
+        .btn-primary:hover { background: #00aadd; box-shadow: 0 4px 15px rgba(0, 194, 255, 0.4); }
     </style>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "react": "https://esm.sh/react@18.2.0",
+                "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+                "@tldraw/tldraw": "https://esm.sh/@tldraw/tldraw@2.1.4?deps=react@18.2.0,react-dom@18.2.0"
+            }
+        }
+    </script>
 </head>
 <body>
+    <div id="root"></div>
 
-    <input type="file" id="file-input" accept="image/*" onchange="handleLocalImage(this)">
-
-    <div class="canvas-container-wrapper" id="wrapper">
-        <div class="context-toolbar" id="context-toolbar">
-            <div class="context-item" onclick="addToDialogue()" style="font-weight:bold; color:#00c2ff;">💬 添加到对话</div>
-            <span style="color:#eee;">|</span>
-            <div class="context-item" id="text-edit-btn" style="display:none;">T 改文字</div>
-            <div class="context-item">🪄 扩图</div>
-            <div class="context-item">💎 超清</div>
-            <div class="context-item" onclick="deleteSelected()" style="color: #FF4B4B;">🗑️ 删除</div>
-        </div>
-        <canvas id="c"></canvas>
+    <div class="ai-toolbar">
+        <button class="btn btn-primary" id="btn-extract">💬 将选中的元素添加到对话</button>
+        <button class="btn" id="btn-clear">🗑️ 清空画板</button>
     </div>
 
-    <script>
-        const wrapper = document.getElementById('wrapper');
-        const canvas = new fabric.Canvas('c', {
-            width: window.innerWidth, height: window.innerHeight, backgroundColor: '#f0f2f5',
-            preserveObjectStacking: true, selectionColor: 'rgba(0, 194, 255, 0.1)', selectionBorderColor: '#00c2ff'
-        });
+    <script type="module">
+        import React, { useEffect } from 'react';
+        import { createRoot } from 'react-dom/client';
+        import { Tldraw, useEditor, exportToBlob } from '@tldraw/tldraw';
 
-        fabric.Object.prototype.set({
-            transparentCorners: false, cornerColor: '#ffffff', cornerStrokeColor: '#00c2ff',
-            borderColor: '#00c2ff', cornerSize: 10, padding: 5, cornerStyle: 'circle', borderDashArray: [5, 5] 
-        });
+        // 桥接组件：负责监听 Tldraw 操作并传回 Python
+        function TldrawBridge() {
+            const editor = useEditor();
 
-        // ==========================================
-        // 🌟 核心功能修复：添加文本框
-        // ==========================================
-        window.addText = function() {
-            const text = new fabric.IText('输入文本', {
-                left: canvas.width / 2, top: canvas.height / 2,
-                fontFamily: 'sans-serif', fill: '#333333', fontSize: 32,
-                originX: 'center', originY: 'center'
-            });
-            canvas.add(text);
-            canvas.setActiveObject(text);
-            canvas.renderAll();
+            useEffect(() => {
+                // 将画布实例挂载到全局，方便接收外部指令
+                window.tldrawEditor = editor;
+
+                // 1. 核心链路：提取 Tldraw 选中内容为图片，并发给 Python
+                document.getElementById('btn-extract').onclick = async () => {
+                    const selectedIds = editor.getSelectedShapeIds();
+                    if (selectedIds.length === 0) {
+                        alert("⚠️ 请先使用选择工具 (V) 框选你想提取的图片或涂鸦！");
+                        return;
+                    }
+
+                    // 调用 Tldraw 原生的高清导出功能 (提取透明背景图层)
+                    const blob = await exportToBlob({
+                        editor,
+                        ids: selectedIds,
+                        format: 'png',
+                        opts: { scale: 1.5, background: false, padding: 10 } 
+                    });
+
+                    // 转为 Base64 并打通 Streamlit 桥梁
+                    const reader = new FileReader();
+                    reader.onloadend = () => {
+                        const b64 = reader.result;
+                        const payload = Date.now() + "|||" + b64;
+                        const bridgeInput = window.parent.document.querySelector('input[aria-label="canvas_bridge"]');
+                        
+                        if (bridgeInput) {
+                            const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
+                            nativeSetter.call(bridgeInput, payload);
+                            bridgeInput.dispatchEvent(new Event('input', { bubbles: true }));
+                            
+                            // 成功提示
+                            const toast = document.createElement('div');
+                            toast.innerHTML = "✅ 已提取至右侧对话中心";
+                            toast.style = "position:fixed; top:30px; left:50%; transform:translateX(-50%); background:#22c55e; color:white; padding:12px 24px; border-radius:12px; z-index:9999; font-weight:bold; box-shadow:0 4px 15px rgba(34,197,94,0.3);";
+                            document.body.appendChild(toast);
+                            setTimeout(() => toast.remove(), 2500);
+                        }
+                    };
+                    reader.readAsDataURL(blob);
+                };
+
+                // 2. 清空画板
+                document.getElementById('btn-clear').onclick = () => {
+                    if(confirm("确定清空全部内容吗？")) {
+                        editor.selectAll();
+                        editor.deleteShapes(editor.getSelectedShapeIds());
+                    }
+                };
+            }, [editor]);
+
+            return null; // 此组件不渲染 UI，只负责逻辑
+        }
+
+        // React 主渲染树
+        function App() {
+            return React.createElement(
+                'div',
+                { style: { position: 'absolute', inset: 0 } },
+                // 渲染官方 Tldraw 组件
+                React.createElement(Tldraw, { persistenceKey: "tldraw-ai-workspace" }, 
+                    React.createElement(TldrawBridge)
+                )
+            );
+        }
+
+        const root = createRoot(document.getElementById('root'));
+        root.render(React.createElement(App));
+
+        // =====================================
+        // 提供给 Python 的魔法回流函数
+        // =====================================
+        window.addImageToCanvas = async function(url) {
+            const editor = window.tldrawEditor;
+            if (!editor) return;
+
+            // Tldraw v2 插入图片必须先创建系统 Asset
+            const assetId = `asset:${Date.now()}`;
+            editor.createAssets([{
+                id: assetId,
+                type: 'image',
+                typeName: 'asset',
+                props: {
+                    name: 'generated-image.png',
+                    src: url,
+                    w: 512,
+                    h: 512,
+                    mimeType: 'image/png',
+                    isAnimated: false,
+                },
+                meta: {}
+            }]);
+
+            // 在视窗中央创建图形实体
+            const camera = editor.getCamera();
+            const viewport = editor.getViewportScreenBounds();
+            editor.createShapes([{
+                type: 'image',
+                x: camera.x + viewport.w / 2 - 256, 
+                y: camera.y + viewport.h / 2 - 256,
+                props: { w: 512, h: 512, assetId: assetId }
+            }]);
         };
-
-        window.uploadLocal = function() { document.getElementById('file-input').click(); };
-        window.clearCanvas = function() { if(confirm("清空吗？")) { canvas.clear(); canvas.backgroundColor = '#f0f2f5'; canvas.renderAll(); } };
-        window.centerView = function() { canvas.setViewportTransform([1, 0, 0, 1, 0, 0]); canvas.renderAll(); };
-
-        // 数据桥接
-        function addToDialogue() {
-            const target = canvas.getActiveObject();
-            if (!target) return;
-            let content = "";
-            let type = "";
-            if (target.type === 'image') {
-                content = target.toDataURL({ format: 'png', quality: 0.8, multiplier: 1 });
-                type = "add_image_to_chat";
-            } else {
-                content = target.text;
-                type = "add_text_to_chat";
-            }
-            const payload = Date.now() + "|||" + content; 
-            const bridgeInput = window.parent.document.querySelector('input[aria-label="canvas_bridge"]');
-            if (bridgeInput) {
-                const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
-                nativeSetter.call(bridgeInput, payload);
-                bridgeInput.dispatchEvent(new Event('input', { bubbles: true }));
-            }
-            ctxToolbar.style.display = 'none';
-        }
-
-        // 悬浮框定位 (精准吸附)
-        const ctxToolbar = document.getElementById('context-toolbar');
-        canvas.on('selection:created', updateToolbar);
-        canvas.on('selection:updated', updateToolbar);
-        canvas.on('selection:cleared', () => ctxToolbar.style.display = 'none');
-        canvas.on('object:moving', updateToolbar);
-        canvas.on('object:scaling', updateToolbar);
-
-        function updateToolbar() {
-            const target = canvas.getActiveObject();
-            if (!target) return;
-            const bound = target.getBoundingRect();
-            ctxToolbar.style.display = 'flex';
-            document.getElementById('text-edit-btn').style.display = (target.type === 'i-text' ? 'block' : 'none');
-            ctxToolbar.style.left = (bound.left + bound.width/2 - ctxToolbar.offsetWidth/2) + 'px';
-            ctxToolbar.style.top = (bound.top - ctxToolbar.offsetHeight - 15) + 'px';
-        }
-
-        function handleLocalImage(input) {
-            const file = input.files[0];
-            if(!file) return;
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                fabric.Image.fromURL(e.target.result, (img) => {
-                    img.scaleToWidth(400);
-                    canvas.add(img).setActiveObject(img);
-                });
-            };
-            reader.readAsDataURL(file);
-        }
-
-        function deleteSelected() { canvas.remove(canvas.getActiveObject()); ctxToolbar.style.display = 'none'; }
-
-        // 空格拖拽 & 缩放
-        let isSpaceDown = false;
-        window.addEventListener('keydown', (e) => { if(e.code === 'Space' && !canvas.getActiveObject()?.isEditing) { isSpaceDown = true; wrapper.style.cursor='grab'; canvas.selection=false; } });
-        window.addEventListener('keyup', (e) => { isSpaceDown = false; wrapper.style.cursor='default'; canvas.selection=true; });
-        canvas.on('mouse:down', function(opt) { if(isSpaceDown) { this.isDragging=true; this.lastPosX=opt.e.clientX; this.lastPosY=opt.e.clientY; } });
-        canvas.on('mouse:move', function(opt) { if(this.isDragging) { let vpt=this.viewportTransform; vpt[4]+=opt.e.clientX-this.lastPosX; vpt[5]+=opt.e.clientY-this.lastPosY; this.requestRenderAll(); this.lastPosX=opt.e.clientX; this.lastPosY=opt.e.clientY; } });
-        canvas.on('mouse:up', function() { this.setViewportTransform(this.viewportTransform); this.isDragging=false; });
-        wrapper.addEventListener('mousewheel', (opt) => { let zoom = canvas.getZoom() * (0.999 ** opt.wheelDelta); if(zoom>20)zoom=20; if(zoom<0.01)zoom=0.01; canvas.zoomToPoint({x:opt.offsetX, y:opt.offsetY}, zoom); opt.preventDefault(); opt.stopPropagation(); });
-
-        window.addImageToCanvas = function(url) {
-            fabric.Image.fromURL(url, (img) => { img.scaleToWidth(400); canvas.add(img).setActiveObject(img); }, {crossOrigin:'anonymous'});
-        }
     </script>
 </body>
 </html>
