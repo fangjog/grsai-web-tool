@@ -16,32 +16,27 @@ from supabase import create_client, Client
 # ==========================================
 st.set_page_config(page_title="AI Pro Studio V6.1", page_icon="🚀", layout="wide", initial_sidebar_state="auto")
 
-# 🌟🌟🌟 注入移动端自适应 CSS 🌟🌟🌟
 st.markdown("""
 <style>
-    /* 移动端专属适配 (屏幕宽度小于768px时生效) */
+    /* 移动端专属适配 */
     @media (max-width: 768px) {
         .block-container { padding: 1rem 0.5rem !important; }
         h1 { font-size: 24px !important; }
         h3, h4 { font-size: 18px !important; }
-        /* 让按钮在手机上变大，防误触 */
         .stButton > button { width: 100% !important; padding: 15px !important; font-size: 16px !important; border-radius: 12px !important; }
-        /* 隐藏底部不需要的标志 */
         footer { visibility: hidden; }
         .stTextArea textarea { font-size: 14px !important; }
     }
-    
     /* PC端美化 */
     .stButton > button { border-radius: 8px; font-weight: bold; transition: all 0.3s; }
     .stButton > button:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
-    
     /* 缩略图优化：强制预览图容器不要太大 */
     [data-testid="stHorizontalBlock"] > div { min-width: 80px !important; }
 </style>
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 🌟🌟🌟 【管理员配置区 & 数据库初始化】 🌟🌟🌟
+# 1. 数据库初始化
 # ==========================================
 try:
     SUPABASE_URL = st.secrets["SUPABASE_URL"]
@@ -51,11 +46,9 @@ except Exception as e:
     st.error("❌ 数据库连接失败，请检查 Secrets 配置。")
     st.stop()
 
-# 单张成本
 IMAGE_COST = 600
 TASKS_FILE = "tasks_history.json"
 
-# 工具函数：JSON 存取 (保留用于本地任务队列历史)
 def load_json(path, default=[]):
     if os.path.exists(path):
         try:
@@ -68,8 +61,24 @@ def save_json(path, data):
         with open(path, "w", encoding="utf-8") as f: json.dump(data, f, ensure_ascii=False)
     except: pass
 
+# 🌟 从 Supabase 获取卡密完整信息
+def get_card_info(card_key):
+    try:
+        res = supabase.table("user_cards").select("*").eq("card_key", card_key).eq("is_active", True).execute()
+        if res.data: return res.data[0]
+    except: pass
+    return None
+
+def deduct_balance(card_key, amount):
+    try:
+        res = supabase.table("user_cards").select("used_points").eq("card_key", card_key).execute()
+        if res.data:
+            new_val = res.data[0]['used_points'] + amount
+            supabase.table("user_cards").update({"used_points": new_val}).eq("card_key", card_key).execute()
+    except: pass
+
 # ==========================================
-# 身份验证 & 记住激活码逻辑
+# 2. 身份验证 & 动态 API 路由
 # ==========================================
 st.sidebar.markdown("### 🪪 身份验证")
 
@@ -80,39 +89,34 @@ user_key = user_key_input.strip() if user_key_input else ""
 if user_key:
     st.query_params["key"] = user_key
 
-# 🌟 从 Supabase 获取余额
-def get_balance(card_key):
-    try:
-        res = supabase.table("user_cards").select("*").eq("card_key", card_key).eq("is_active", True).execute()
-        if res.data:
-            return res.data[0]['total_points'] - res.data[0]['used_points']
-    except: pass
-    return None
-
-# 🌟 在 Supabase 扣款
-def deduct_balance(card_key, amount):
-    try:
-        res = supabase.table("user_cards").select("used_points").eq("card_key", card_key).execute()
-        if res.data:
-            new_val = res.data[0]['used_points'] + amount
-            supabase.table("user_cards").update({"used_points": new_val}).eq("card_key", card_key).execute()
-    except: pass
-
 if not user_key:
     st.sidebar.warning("👈 请输入有效的激活码以解锁功能。")
     st.sidebar.info("💡 提示：成功输入后，收藏本页网址即可免密登录！")
     st.stop()
 
-current_balance = get_balance(user_key)
-if current_balance is None:
+# 验证数据库信息
+card_info = get_card_info(user_key)
+if not card_info:
     st.sidebar.error("❌ 激活码无效或已停用。")
     st.stop()
 
-GRSAI_API_KEY = st.secrets.get("API_VIP", "") # 统一使用你的 API_VIP
+current_balance = card_info['total_points'] - card_info['used_points']
+
+# 🌟🌟🌟 核心修改：动态获取对应 API 密钥 🌟🌟🌟
+# 1. 从数据库读取该卡对应的 API 名字，如果没写，默认给 API_VIP888
+raw_api_name = card_info.get('api_secret_name') or "API_VIP888"
+# 2. 清洗多余的单引号和空格（防御性编程）
+clean_api_name = raw_api_name.strip("'").strip()
+
+# 3. 去 Secrets 里拿真正的生图密码
+GRSAI_API_KEY = st.secrets.get(clean_api_name, "")
 if not GRSAI_API_KEY:
-    st.error("⚠️ 未在 Secrets 中找到 `API_VIP`。")
+    st.error(f"⚠️ 系统配置错误：未在 Secrets 中找到名为 `{clean_api_name}` 的密钥。")
     st.stop()
 
+# ==========================================
+# 任务队列初始化
+# ==========================================
 if 'tasks' not in st.session_state: st.session_state.tasks = load_json(TASKS_FILE)
 
 def clean_and_get_tasks():
@@ -135,7 +139,7 @@ def pil_to_data_uri(img):
     return f"data:image/jpeg;base64,{base64.b64encode(buffered.getvalue()).decode()}"
 
 # ==========================================
-# 动画进度弹窗 (含扣款逻辑)
+# 动画进度弹窗
 # ==========================================
 @st.experimental_dialog("🔍 实时生图进度", width="large")
 def show_progress_dialog(task_id, prompt_text, active_user_key):
@@ -157,7 +161,7 @@ def show_progress_dialog(task_id, prompt_text, active_user_key):
                 if status == "succeeded":
                     progress_bar.progress(100)
                     img_url = q_res["data"]["results"][0]["url"]
-                    deduct_balance(active_user_key, IMAGE_COST) # 🌟 这里已接入云端真实扣款
+                    deduct_balance(active_user_key, IMAGE_COST) # 真实扣款
                     status_text.success("✅ **生成成功！(已扣除 1 张额度)**")
                     for t in st.session_state.tasks:
                         if t['task_id'] == task_id:
@@ -179,17 +183,13 @@ def show_progress_dialog(task_id, prompt_text, active_user_key):
         time.sleep(3)
 
 # ==========================================
-# 侧边栏状态
+# 侧边栏及主界面
 # ==========================================
 max_images = int(current_balance // IMAGE_COST)
 
 st.sidebar.markdown(f'剩余可制图: <span style="color:#00c2ff; font-weight:bold; font-size:22px;">{max_images}</span> 张', unsafe_allow_html=True)
 st.sidebar.divider()
 menu = st.sidebar.radio("功能导航", ["✍️ 文生图", "🖼️ 图生图"])
-
-# ==========================================
-# 页面内容
-# ==========================================
 
 st.title("🚀 image-2 Pro Studio")
 
@@ -208,10 +208,10 @@ with col_main:
         st.markdown("#### 🖼️ 图生图模式")
         uploaded_files = st.file_uploader("📤 上传参考图 (支持多图)", type=["png", "jpg"], accept_multiple_files=True)
         
-        # 🌟 修复后的精巧版图片预览墙 (分6列，缩小尺寸)
+        # 精巧版图片预览墙 (分6列)
         if uploaded_files:
             st.markdown("<p style='font-size:14px; color:#666; margin-bottom:5px;'>👁️ 已选参考图预览：</p>", unsafe_allow_html=True)
-            cols = st.columns(6) # 强制分6列，让图片变得很小
+            cols = st.columns(6) 
             for i, file in enumerate(uploaded_files):
                 col_idx = i % 6
                 try:
@@ -232,7 +232,7 @@ with col_main:
         btn_submit = st.button("🚀 开始垫图生成", type="primary", use_container_width=True)
 
     if btn_submit:
-        if get_balance(user_key) < IMAGE_COST:
+        if current_balance < IMAGE_COST:
             st.error("❌ 额度不足，请联系管理员充值。")
         elif not prompt_txt:
             st.error("❌ 请输入提示词！")
