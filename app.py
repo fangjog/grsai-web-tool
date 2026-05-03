@@ -174,14 +174,14 @@ with col_main:
         with col1_2:
             quality_txt = st.selectbox("💎 图片质量", ["auto", "high", "medium", "low"], key="txt_quality")
             
-        btn_txt2img = st.button("✨ 提交任务 (异步排队)")
+        # 【关键修复区】：加上了专属 key，彻底解决重复 ID 报错！
+        btn_txt2img = st.button("✨ 提交任务 (异步排队)", key="btn_submit_txt")
 
     with tab2:
         st.markdown("#### 🖌️ 上传参考图或在下方画布涂鸦")
         
         uploaded_files = st.file_uploader("支持一次性框选多张图上传", type=["png", "jpg", "jpeg"], accept_multiple_files=True)
         
-        # 【核心优化】：直观、清晰的小缩略图展示，彻底解决看不清图1、图2的问题
         canvas_bg = None
         if uploaded_files:
             st.markdown("📎 **您上传的图片预览：**")
@@ -225,7 +225,9 @@ with col_main:
         )
         
         prompt_img = st.text_area("画面描述 (修改指令或最终画面描述)", height=80, key="img2img_prompt")
-        btn_img2img = st.button("✨ 提交任务 (异步排队)")
+        
+        # 【关键修复区】：加上了专属 key，彻底解决重复 ID 报错！
+        btn_img2img = st.button("✨ 提交任务 (异步排队)", key="btn_submit_img")
 
     # ==========================================
     # 6. 核心 API 提交 (真正的异步秒提)
