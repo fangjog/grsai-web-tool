@@ -3,42 +3,46 @@
 <head>
     <meta charset="UTF-8">
     <title>AI Pro Canvas Engine</title>
-    <script src="[https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js](https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js)"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js"></script>
     <style>
         body { margin: 0; padding: 0; background-color: #f0f2f5; font-family: sans-serif; height: 100vh; overflow: hidden; position: relative; }
+        
+        /* 顶部工具栏 */
         .toolbar { background: white; padding: 15px 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); display: flex; gap: 15px; align-items: center; z-index: 10; border-bottom: 1px solid #eee; position: relative; }
-        .btn { padding: 8px 16px; border: none; border-radius: 6px; background: #f8f9fa; color: #333; cursor: pointer; font-size: 14px; font-weight: bold; border: 1px solid #ddd; display: flex; align-items: center; gap: 6px; }
+        .btn { padding: 8px 16px; border: none; border-radius: 6px; background: #f8f9fa; color: #333; cursor: pointer; font-size: 14px; font-weight: bold; border: 1px solid #ddd; }
         .btn:hover { background: #e2e6ea; border-color: #ccc; }
+        
+        /* 画布主容器 */
         .canvas-container-wrapper { width: 100vw; height: calc(100vh - 72px); position: relative; overflow: hidden; cursor: default; }
         .canvas-container { position: absolute; top: 0; left: 0; box-shadow: 0 10px 30px rgba(0,0,0,0.1); border-radius: 4px; background-color: white; }
 
-        /* 【核心功能】选中元素时的悬浮工具栏 */
+        /* 悬浮工具栏 (完美还原截图1) */
         .context-toolbar {
-            position: absolute; display: none; background: white; border-radius: 10px; padding: 6px 12px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.15); border: 1px solid #eee; z-index: 1000;
-            white-space: nowrap; font-size: 13px; color: #333; pointer-events: auto; gap: 12px; align-items: center;
+            position: absolute; display: none; background: white; border-radius: 20px; padding: 8px 16px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1); border: 1px solid #eee; z-index: 1000;
+            white-space: nowrap; font-size: 13px; color: #333; pointer-events: auto; gap: 16px; align-items: center;
         }
-        .context-item { cursor: pointer; color: #333; transition: color 0.2s; }
+        .context-item { cursor: pointer; color: #333; transition: color 0.2s; display: flex; align-items: center; gap: 5px; }
         .context-item:hover { color: #00c2ff; }
+
         #file-input { display: none; }
     </style>
 </head>
 <body>
 
     <div class="toolbar">
-        <span style="font-weight: 900; font-size: 16px; color: #333; margin-right: 20px;">🎨 Pro Canvas Engine</span>
-        
-        <button class="btn" onclick="document.getElementById('file-input').click();">📤 本地上传本地上传本地上传本地上传本地上传本地上传本地上传本地上传本地上传本地上传本地上传上传上传上传图片本地上传</button>
+        <span style="font-weight: 900; font-size: 16px; color: #333; margin-right: 20px;">🎨 Pro Canvas</span>
+        <button class="btn" onclick="document.getElementById('file-input').click();">📤 本地上传</button>
         <button class="btn" onclick="addText()">T 添加文本框</button>
         <span style="color:#ddd;">|</span>
-        <button class="btn" onclick="clearCanvas()" style="color: #666; font-weight: normal; font-size: 13px;">🔄 清空工作工作工作工作工作台🔄 清空画布🔄🔄🔄</button>
-        <p style="color:#999; font-size: 12px; margin-left: auto;">【右键右键右键】居中视图视图视图居中视图居中视图居中居中居中居中居中视图视图视图 | 【空格+拖拽拖拽拖拽+拖拽+拖拽拖拽拖拽+拖拽+拖拽拖拽】移动位置移动位置移动移动位置移动位置位置移动位置</p>
+        <button class="btn" onclick="clearCanvas()" style="color: #666; font-weight: normal;">🔄 清空画布</button>
+        <p style="color:#999; font-size: 12px; margin-left: auto;">【右键】居中 | 【空格+拖拽】移动</p>
     </div>
 
     <input type="file" id="file-input" accept="image/*" onchange="handleLocalImage(this)">
 
     <div class="context-toolbar" id="context-toolbar">
-        <div class="context-item" onclick="addToDialogue()" style="font-weight:bold; color:#00c2ff;">💬 添加到对话作为作为对话作为对话对话对话参考参考作为对话作为参考图片</div>
+        <div class="context-item" onclick="addToDialogue()" style="font-weight:bold; color:#333;">💬 添加到对话</div>
         <span style="color:#eee;">|</span>
         <div class="context-item">T 改文字</div>
         <div class="context-item">🪄 扩图</div>
@@ -51,7 +55,6 @@
     </div>
 
     <script>
-        // 初始化专业画布引擎 Fabric.js fabric.js profession profession Fabric fabric Fabric fabric
         const wrapper = document.getElementById('wrapper');
         const originalWidth = 1400; 
         const originalHeight = 1000; 
@@ -61,44 +64,55 @@
             preserveObjectStacking: true, selectionColor: 'rgba(0, 194, 255, 0.1)', selectionBorderColor: '#00c2ff'
         });
 
-        // 还原设计图需求：选中时的蓝色控制手柄和蓝色虚线和蓝色选中边框选中边框和选中虚线边框虚线虚线虚线虚线边框
+        // ==========================================
+        // 🌟 视觉还原：精确还原图1的边框和手柄
+        // ==========================================
         fabric.Object.prototype.set({
-            transparentCorners: false, cornerColor: '#ffffff', cornerStrokeColor: '#00c2ff',
-            borderColor: '#00c2ff', cornerSize: 10, padding: 5, cornerStyle: 'circle', borderDashArray: [4, 4]
+            transparentCorners: false, 
+            cornerColor: '#ffffff', 
+            cornerStrokeColor: '#00c2ff',
+            borderColor: '#00c2ff', 
+            cornerSize: 10, 
+            padding: 5, 
+            cornerStyle: 'circle', 
+            borderDashArray: [5, 5] // 蓝色虚线
         });
 
-        // 居中画布到视图中心
+        // 初始居中
         canvas.relativePan(new fabric.Point((wrapper.clientWidth - originalWidth) / 2, (wrapper.clientHeight - originalHeight) / 2));
 
         // ==========================================
-        # 1. 核心链路：提取并发送数据链路并发送并发送并发送建立链路建立建立数据发送链路
-        # ==========================================
-        
-        // 核心：点击「添加到对话对话参考]时的跨域异步无感数据发送链路 addToDialogue addToDialogue addToDialogue Dialogue Dialogue
+        // 数据桥接：发送 Base64 到 Python
+        // ==========================================
         function addToDialogue() {
             const target = canvas.getActiveObject();
             if (!target) return;
             
             if (target.type === 'image') {
-                // 核心黑科技黑科技：利用高清化参数 multipliers，抓取专业级 Base64 数据 Base64 Base64 Base64
-                // 利用异步数据异步，通过 window.parent window.parentwindow.parent window.parent 强行强行无感穿透穿透穿透穿透穿透隔离限制限制，送入主 app 捕捉处理捕捉和进行进行记账处理进行处理处理捕捉进行和进行处理捕捉和记账处理
                 const imageBase64 = target.toDataURL({ format: 'png', quality: 0.9, multiplier: 1.5 });
+                const payload = Date.now() + "|||" + imageBase64; 
                 
-                // 发送数据异步：由于是 components.html components.html components.html，直接直接，直接直接，直接直接利用主主st注入 st注入 st注入 st注入注入注入注入 st注入的异步数据异步事件捕捉机制即可。捕捉机制捕捉机制捕捉机制即可。捕捉机制。
-                if (window.parent) {
-                    window.parent.postMessage({ type: 'streamlit:setComponentValue', value: { type: "add_image_to_chat", content: imageBase64 } }, '*');
-                    st.toast("✅ 图片参考层已魔法提取魔法提取至历史历史提取提取魔法魔法提取提取对话参考队列历史");
+                // 跨域寻找 Streamlit 隐藏的输入框
+                const parentDoc = window.parent.document;
+                const bridgeInput = parentDoc.querySelector('input[aria-label="canvas_bridge"]');
+                
+                if (bridgeInput) {
+                    // React 16+ 强制触发 Input 事件黑科技
+                    const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
+                    nativeInputValueSetter.call(bridgeInput, payload);
+                    bridgeInput.dispatchEvent(new Event('input', { bubbles: true }));
+                } else {
+                    console.error("未找到数据桥梁");
                 }
             } else {
-                alert("目前只支持将将画布将将画布画布将将画布中的图片图片图片图片添加到添加到创作中心对话栏");
+                alert("目前只支持将图片添加到对话！");
             }
             ctxToolbar.style.display = 'none';
         }
 
         // ==========================================
-        # 2. 交互逻辑 (悬浮栏位置计算、空格拖拽移动画布位置位置、空格拖拽拖拽移动拖拽位置移动)
-        # ==========================================
-        
+        // 交互逻辑：悬浮栏计算、上传、操作
+        // ==========================================
         const ctxToolbar = document.getElementById('context-toolbar');
         canvas.on('selection:created', updateToolbarPosition);
         canvas.on('selection:updated', updateToolbarPosition);
@@ -116,7 +130,6 @@
             }
         }
 
-        // --- 本地上传 FR需求图1 本地上传 ---
         function handleLocalImage(input) {
             const file = input.files[0];
             if(!file) return;
@@ -125,8 +138,8 @@
                 const imgObj = new Image();
                 imgObj.src = e.target.result;
                 imgObj.onload = function() {
-                    const fabricImg = new fabric.Image(imgObj, { left: 100, top: 100, angle: 0 });
-                    fabricImg.thumbnail((1024,1024)); // 自动启用启用高清压缩
+                    const fabricImg = new fabric.Image(imgObj, { left: 200, top: 200, angle: 0 });
+                    fabricImg.scaleToWidth(Math.min(imgObj.width, 500));
                     canvas.add(fabricImg);
                     canvas.setActiveObject(fabricImg);
                     input.value = ""; 
@@ -136,7 +149,7 @@
         }
 
         function addText() {
-            const text = new fabric.IText('IText 双击双击双击双击双击编辑', { left: 100, top: 100, fontFamily: 'sans-serif', fill: '#333333', fontSize: 24 });
+            const text = new fabric.IText('双击编辑文本', { left: 200, top: 200, fontFamily: 'sans-serif', fill: '#333333', fontSize: 24 });
             canvas.add(text); canvas.setActiveObject(text);
         }
 
@@ -147,67 +160,31 @@
         }
 
         function clearCanvas() {
-            if(confirm("确定清空清空清空清空清空清空清空吗🔄🔄
-
-🔄清空吗🔄🔄</h3>🔄🔄吗🔄🔄")) {
+            if(confirm("确定清空画布吗？")) {
                 canvas.clear(); canvas.backgroundColor = '#ffffff'; canvas.renderAll();
             }
         }
 
         // ==========================================
-        # 3. 核心链路下半段：魔法加载云端图片回Fabric画布
-        # ==========================================
-        
-        // --- 对接 st.markdown 黑科技注入 window 指令 ---
-        function checkPythonInstruction() {
-            if (window.stInjectGeneratedImage) {
-                const url = window.stInjectGeneratedImage;
-                st.toast("正在抓取云端对话图片魔法魔法加载魔法加载魔法魔法加载魔法加载至加载至加载工作台加载...魔法魔法加载至加载至工作台...")
-                
-                // 魔法加载核心技术核心核心技术核心技术技术技术 CrossOriginanonymous匿名穿透匿匿名匿跨域
-                fabric.Image.fromURL(url, function(img) {
-                    img.thumbnail((400, 400));
-                    img.set({
-                        left: originalWidth / 2 - img.getScaledWidth() / 2,
-                        top: originalHeight / 2 - img.getScaledHeight() / 2
-                    });
-                    canvas.add(img);
-                    canvas.setActiveObject(img);
-                    canvas.requestRenderAll();
-                    st.success("图片已魔法魔法加载加载至加载至加载工作台加载!")
-                }, { crossOrigin: 'anonymous' });
-                
-                window.stInjectGeneratedImage = null; // 清除清除，清除防死循环防死防死循环
-            }
-        }
-        // 核心技术黑科技核心核心监听轮询，监听 Python 异步 st.markdown 注入 window 指令轮询指令轮询轮询轮询
-        setInterval(checkPythonInstruction, 1000); 
-
-
-        // --- 空格键拖拽位置移动拖拽位置移动交互 FR需求图2拖拽 ---
+        // 拖拽与缩放逻辑
+        // ==========================================
         let isSpaceDown = false;
         
-        // 鼠标滚轮缩放逻辑
         wrapper.addEventListener('mousewheel', (opt) => {
             const delta = opt.wheelDelta;
             let zoom = canvas.getZoom();
             zoom *= 0.999 ** delta;
             if (zoom > 20) zoom = 20;
-            if (zoom < 0.01) zoom = 0.01;
+            if (zoom < 0.1) zoom = 0.1;
             canvas.zoomToPoint({ x: opt.offsetX, y: opt.offsetY }, zoom);
             opt.preventDefault(); opt.stopPropagation();
         });
 
-        // 空格拖拽实现
         window.addEventListener('keydown', (e) => {
-            if(e.code === 'Space'){
+            if(e.code === 'Space' && (!canvas.getActiveObject() || !canvas.getActiveObject().isEditing)){
                 isSpaceDown = true;
                 wrapper.style.cursor = 'grab';
                 canvas.selection = false; 
-                // 阻止文本输入框输入空格
-                if (canvas.getActiveObject() && canvas.getActiveObject().isEditing) {
-                   e.preventDefault();
-                }
             }
         });
         
@@ -241,13 +218,21 @@
             this.isDragging = false; this.selection = true;
         });
 
-        // 右键居中居中居中 FR需求图7右键右键 FR FR居中
         wrapper.addEventListener('contextmenu', (e) => {
             e.preventDefault();
-            // 直接触发居中相对于相对于相对于视图中 views VIEWS视图 views 居中居中居中居中居中
             canvas.relativePan(new fabric.Point((wrapper.clientWidth - canvas.width * canvas.getZoom()) / 2, (wrapper.clientHeight - canvas.height * canvas.getZoom()) / 2));
         });
 
+        // 提供给 Python 注入的加载函数
+        window.addImageToCanvas = function(url) {
+            fabric.Image.fromURL(url, function(img) {
+                img.scaleToWidth(400);
+                img.set({ left: originalWidth/2 - 200, top: originalHeight/2 - img.getScaledHeight()/2 });
+                canvas.add(img);
+                canvas.setActiveObject(img);
+                canvas.requestRenderAll();
+            }, { crossOrigin: 'anonymous' });
+        }
     </script>
 </body>
 </html>
