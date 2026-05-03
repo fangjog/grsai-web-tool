@@ -14,7 +14,7 @@ from supabase import create_client, Client
 # ==========================================
 # 0. 网页基础配置
 # ==========================================
-st.set_page_config(page_title="AI Pro Studio V6.2", page_icon="🚀", layout="wide", initial_sidebar_state="auto")
+st.set_page_config(page_title="AI Pro Studio V6.3", page_icon="🚀", layout="wide", initial_sidebar_state="auto")
 
 st.markdown("""
 <style>
@@ -51,7 +51,7 @@ except Exception as e:
 IMAGE_COST = 600
 TASKS_FILE = "tasks_history.json"
 
-def load_json(path, default=[]):
+def load_json(path, default={}):
     if os.path.exists(path):
         try:
             with open(path, "r", encoding="utf-8") as f: return json.load(f)
@@ -79,15 +79,14 @@ def deduct_balance(card_key, amount):
     except: pass
 
 # ==========================================
-# 2. 🌟 居中拦截式身份验证 🌟
+# 2. 居中拦截式身份验证
 # ==========================================
 query_key = st.query_params.get("key", "")
 card_info = get_card_info(query_key) if query_key else None
 
-# 如果没有通过验证（没有码，或者码不对），直接在主界面居中显示登录框
 if not card_info:
-    st.markdown("<br><br><br>", unsafe_allow_html=True) # 往下推一点，视觉更居中
-    col1, col2, col3 = st.columns([1, 2, 1]) # PC端比例 1:2:1 居中，手机端会自动满宽
+    st.markdown("<br><br><br>", unsafe_allow_html=True) 
+    col1, col2, col3 = st.columns([1, 2, 1]) 
     
     with col2:
         st.markdown("""
@@ -112,11 +111,9 @@ if not card_info:
                     st.rerun()
                 else:
                     st.error("❌ 激活码无效或已停用，请重试。")
-    
-    # 🌟 核心拦截：如果没登录，代码运行到这里就彻底停止，不会渲染侧边栏和主界面
     st.stop() 
 
-# --- 走到这里说明验证完全通过了 ---
+# --- 验证通过 ---
 user_key = query_key
 current_balance = card_info['total_points'] - card_info['used_points']
 
@@ -129,21 +126,35 @@ if not GRSAI_API_KEY:
     st.stop()
 
 # ==========================================
-# 任务队列初始化
+# 3. 🌟 任务队列初始化 (单人单间隔离) 🌟
 # ==========================================
-if 'tasks' not in st.session_state: st.session_state.tasks = load_json(TASKS_FILE)
+# 读取全局 JSON，确保是字典格式（兼容旧版数据）
+all_history = load_json(TASKS_FILE, default={})
+if isinstance(all_history, list): 
+    all_history = {} # 如果是旧版的大列表，直接清空重置，防止报错
 
-def clean_and_get_tasks():
+if 'tasks' not in st.session_state: 
+    # 只把当前用户的记录读进内存
+    st.session_state.tasks = all_history.get(user_key, [])
+
+def clean_and_get_tasks(active_key):
     curr_time = time.time()
+    # 清理当前用户的超时任务，只保留最近10条有效记录
     valid = [t for t in st.session_state.tasks if (curr_time - t['timestamp']) < 3600]
     valid = valid[-10:]
     st.session_state.tasks = valid
-    save_json(TASKS_FILE, valid)
+    
+    # 将当前用户的更新同步到全局大字典中
+    global_history = load_json(TASKS_FILE, default={})
+    if isinstance(global_history, list): global_history = {}
+    global_history[active_key] = valid
+    save_json(TASKS_FILE, global_history)
+    
     return valid
 
-def add_task(item):
+def add_task(item, active_key):
     st.session_state.tasks.append(item)
-    clean_and_get_tasks()
+    clean_and_get_tasks(active_key)
 
 def pil_to_data_uri(img):
     buffered = io.BytesIO()
@@ -189,8 +200,9 @@ def show_progress_dialog(task_id, prompt_text, active_user_key):
                         if t['task_id'] == task_id:
                             t['status'] = 'succeeded'
                             t['urls'] = urls
-                            
-                    save_json(TASKS_FILE, st.session_state.tasks)
+                    
+                    # 更新当前用户的状态到文件
+                    clean_and_get_tasks(active_user_key)
                     time.sleep(1.5)
                     st.rerun()
                 elif status == "failed":
@@ -200,7 +212,8 @@ def show_progress_dialog(task_id, prompt_text, active_user_key):
                         if t['task_id'] == task_id:
                             t['status'] = 'failed'
                             t['reason'] = reason
-                    save_json(TASKS_FILE, st.session_state.tasks)
+                    # 更新当前用户的状态到文件
+                    clean_and_get_tasks(active_user_key)
                     break
         except: pass
         time.sleep(3)
@@ -210,11 +223,12 @@ def show_progress_dialog(task_id, prompt_text, active_user_key):
 # ==========================================
 max_images = int(current_balance // IMAGE_COST)
 
-# 侧边栏不再有输入框了，变成单纯的信息展示区
 st.sidebar.markdown(f'### 👤 用户中心\n当前用户: `{user_key}`')
 st.sidebar.markdown(f'剩余可制图: <span style="color:#00c2ff; font-weight:bold; font-size:22px;">{max_images}</span> 张', unsafe_allow_html=True)
 if st.sidebar.button("🚪 退出登录", use_container_width=True):
     st.query_params.clear()
+    # 清理掉内存里的记录缓存，防止串号
+    if 'tasks' in st.session_state: del st.session_state.tasks
     st.rerun()
     
 st.sidebar.divider()
@@ -291,7 +305,7 @@ with col_main:
             try:
                 sub_res = requests.post("https://grsai.dakka.com.cn/v1/draw/completions", headers=headers, json=payload, verify=False).json()
                 if sub_res.get("code") == 0:
-                    add_task({"task_id": sub_res["data"]["id"], "timestamp": time.time(), "time_str": datetime.now().strftime("%H:%M"), "prompt": prompt_txt, "status": "running", "urls": []})
+                    add_task({"task_id": sub_res["data"]["id"], "timestamp": time.time(), "time_str": datetime.now().strftime("%H:%M"), "prompt": prompt_txt, "status": "running", "urls": []}, user_key)
                     st.success("🎉 任务已提交云端！")
                     time.sleep(1)
                     st.rerun()
@@ -300,7 +314,8 @@ with col_main:
 
 with col_history:
     st.markdown("### 🗂️ 创作记录")
-    tasks_list = clean_and_get_tasks()
+    # 只获取当前用户的历史任务
+    tasks_list = clean_and_get_tasks(user_key)
     if not tasks_list:
         st.caption("暂无生成记录。")
     else:
