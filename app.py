@@ -8,7 +8,7 @@ from datetime import datetime
 from streamlit_drawable_canvas import st_canvas
 
 # ==========================================
-# 0. 网页基础配置 (⚠️ 必须是第一句 st 命令)
+# 0. 网页基础配置 (必须是第一句)
 # ==========================================
 st.set_page_config(page_title="image-2 V2", page_icon="🎨", layout="wide")
 
@@ -44,7 +44,6 @@ def pil_to_data_uri(img):
         background = Image.new('RGB', img.size, (255, 255, 255))
         background.paste(img, mask=img.split()[3])
         img = background
-    # 强制等比缩放，防止多图上传时 payload 过大导致服务器拒收
     img.thumbnail((1024, 1024)) 
     img.save(buffered, format="JPEG")
     base64_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
@@ -66,7 +65,7 @@ st.sidebar.success("✅ 验证通过，欢迎使用！")
 col_main, col_history = st.columns([7, 3])
 
 with col_main:
-    tab1, tab2 = st.tabs(["✍️ 文生图", "🖌️ 画板与图生图"])
+    tab1, tab2 = st.tabs(["✍️ 文生图", "🖌️ 画布与图生图"])
 
     with tab1:
         st.markdown("#### 📝 输入描述直接生成画面")
@@ -83,7 +82,7 @@ with col_main:
     with tab2:
         st.markdown("#### 🖌️ 上传参考图或在下方画布涂鸦")
         
-        uploaded_files = st.file_uploader("1. 可选：上传参考图 (支持多选，第1张作为画板底图)", type=["png", "jpg", "jpeg"], accept_multiple_files=True)
+        uploaded_files = st.file_uploader("可选：上传参考图 (支持多选，第1张作为画布底图)", type=["png", "jpg", "jpeg"], accept_multiple_files=True)
         
         canvas_bg = None
         if uploaded_files:
@@ -98,7 +97,10 @@ with col_main:
             cols = st.columns(min(len(uploaded_files)-1, 5))
             for idx, file in enumerate(uploaded_files[1:]):
                 with cols[idx % 5]:
-                    st.image(file, use_container_width=True)
+                    # 【核心修复区】：显式读取图片并重置指针，杜绝 TypeError
+                    preview_img = Image.open(file)
+                    st.image(preview_img, use_container_width=True)
+                    file.seek(0) # 重置文件流，保证后续 API 提交能正常读取
 
         st.caption("在下方区域使用鼠标绘制内容，它将作为主垫图参考：")
         canvas_result = st_canvas(
@@ -112,7 +114,7 @@ with col_main:
             key="canvas",
         )
         
-        prompt_img = st.text_area("2. 画面描述 (修改指令或最终画面描述)", height=80, key="img2img_prompt")
+        prompt_img = st.text_area("画面描述 (修改指令或最终画面描述)", height=80, key="img2img_prompt")
         btn_img2img = st.button("✨ 立即生成 (图生图)")
 
     # ==========================================
