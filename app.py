@@ -8,7 +8,12 @@ from datetime import datetime
 from streamlit_drawable_canvas import st_canvas
 
 # ==========================================
-# 1. 基础配置与安全密钥读取
+# 0. 网页基础配置 (⚠️ 必须是第一句 st 命令)
+# ==========================================
+st.set_page_config(page_title="image-2 V2", page_icon="🎨", layout="wide")
+
+# ==========================================
+# 1. 安全密钥读取
 # ==========================================
 try:
     GRSAI_API_KEY = st.secrets["GRSAI_API_KEY"]
@@ -17,8 +22,6 @@ except:
     st.stop()
 
 VALID_KEYS = ["vip888", "test1234"]
-
-st.set_page_config(page_title="image-2 V2", page_icon="🎨", layout="wide")
 
 # ==========================================
 # 2. 历史记录系统
@@ -33,7 +36,7 @@ def clean_and_get_history():
     return st.session_state.history
 
 # ==========================================
-# 3. 图像处理辅助函数 (防超载限制与 Base64)
+# 3. 图像处理辅助函数
 # ==========================================
 def pil_to_data_uri(img):
     buffered = io.BytesIO()
@@ -80,19 +83,16 @@ with col_main:
     with tab2:
         st.markdown("#### 🖌️ 上传参考图或在下方画布涂鸦")
         
-        # 【核心修改点】开启多选文件模式 (accept_multiple_files=True)
-        uploaded_files = st.file_uploader("1. 可选：上传参考图 (支持框选多张，第1张作为画板底图)", type=["png", "jpg", "jpeg"], accept_multiple_files=True)
+        uploaded_files = st.file_uploader("1. 可选：上传参考图 (支持多选，第1张作为画板底图)", type=["png", "jpg", "jpeg"], accept_multiple_files=True)
         
         canvas_bg = None
         if uploaded_files:
             try:
-                # 永远取列表里的第 1 张作为画布底图
                 canvas_bg = Image.open(uploaded_files[0])
                 canvas_bg.thumbnail((1024, 1024))
             except Exception as e:
                 st.error("首张图片读取失败。")
                 
-        # 友好的 UI 提示：展示其余被作为附加参考的图片
         if uploaded_files and len(uploaded_files) > 1:
             st.caption(f"📎 已读取额外 {len(uploaded_files)-1} 张附加参考图：")
             cols = st.columns(min(len(uploaded_files)-1, 5))
@@ -136,16 +136,13 @@ with col_main:
                 "shutProgress": True
             }
             
-            # 【核心修改点】多图 urls 数组拼装逻辑
             if mode == "img2img":
                 urls_list = []
                 
-                # 1. 抓取画板内容 (包含第1张底图 + 涂鸦)
                 if canvas_result.image_data is not None:
                     canvas_pil = Image.fromarray(canvas_result.image_data.astype('uint8'), 'RGBA')
                     urls_list.append(pil_to_data_uri(canvas_pil))
                 
-                # 2. 抓取其余多选的参考图片，转码并追加到列表里
                 if uploaded_files and len(uploaded_files) > 1:
                     for file in uploaded_files[1:]:
                         img_extra = Image.open(file)
