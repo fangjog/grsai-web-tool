@@ -12,14 +12,14 @@
         .btn { padding: 8px 16px; border: none; border-radius: 6px; background: #f8f9fa; color: #333; cursor: pointer; font-size: 14px; font-weight: bold; border: 1px solid #ddd; }
         .btn:hover { background: #e2e6ea; border-color: #ccc; }
         
-        /* 画布主容器 */
+        /* 画布主容器 (设为 relative，以便内部的悬浮框绝对定位) */
         .canvas-container-wrapper { width: 100vw; height: calc(100vh - 72px); position: relative; overflow: hidden; cursor: default; }
         .canvas-container { position: absolute; top: 0; left: 0; box-shadow: 0 10px 30px rgba(0,0,0,0.1); border-radius: 4px; background-color: white; }
 
-        /* 悬浮工具栏 (完美还原截图1) */
+        /* 悬浮工具栏 (完美还原截图1，移除 display:none，由 JS 控制) */
         .context-toolbar {
             position: absolute; display: none; background: white; border-radius: 20px; padding: 8px 16px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.1); border: 1px solid #eee; z-index: 1000;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.15); border: 1px solid #eee; z-index: 1000;
             white-space: nowrap; font-size: 13px; color: #333; pointer-events: auto; gap: 16px; align-items: center;
         }
         .context-item { cursor: pointer; color: #333; transition: color 0.2s; display: flex; align-items: center; gap: 5px; }
@@ -41,16 +41,17 @@
 
     <input type="file" id="file-input" accept="image/*" onchange="handleLocalImage(this)">
 
-    <div class="context-toolbar" id="context-toolbar">
-        <div class="context-item" onclick="addToDialogue()" style="font-weight:bold; color:#333;">💬 添加到对话</div>
-        <span style="color:#eee;">|</span>
-        <div class="context-item">T 改文字</div>
-        <div class="context-item">🪄 扩图</div>
-        <div class="context-item">💎 超清</div>
-        <div class="context-item" onclick="deleteSelected()" style="color: #FF4B4B;">🗑️ 删除</div>
-    </div>
-
     <div class="canvas-container-wrapper" id="wrapper">
+        
+        <div class="context-toolbar" id="context-toolbar">
+            <div class="context-item" onclick="addToDialogue()" style="font-weight:bold; color:#00c2ff;">💬 添加到对话</div>
+            <span style="color:#eee;">|</span>
+            <div class="context-item">T 改文字</div>
+            <div class="context-item">🪄 扩图</div>
+            <div class="context-item">💎 超清</div>
+            <div class="context-item" onclick="deleteSelected()" style="color: #FF4B4B;">🗑️ 删除</div>
+        </div>
+
         <canvas id="c"></canvas>
     </div>
 
@@ -64,9 +65,7 @@
             preserveObjectStacking: true, selectionColor: 'rgba(0, 194, 255, 0.1)', selectionBorderColor: '#00c2ff'
         });
 
-        // ==========================================
-        // 🌟 视觉还原：精确还原图1的边框和手柄
-        // ==========================================
+        // 视觉还原：精确还原虚线蓝框和白心圆点
         fabric.Object.prototype.set({
             transparentCorners: false, 
             cornerColor: '#ffffff', 
@@ -75,7 +74,7 @@
             cornerSize: 10, 
             padding: 5, 
             cornerStyle: 'circle', 
-            borderDashArray: [5, 5] // 蓝色虚线
+            borderDashArray: [5, 5] 
         });
 
         // 初始居中
@@ -92,17 +91,13 @@
                 const imageBase64 = target.toDataURL({ format: 'png', quality: 0.9, multiplier: 1.5 });
                 const payload = Date.now() + "|||" + imageBase64; 
                 
-                // 跨域寻找 Streamlit 隐藏的输入框
                 const parentDoc = window.parent.document;
                 const bridgeInput = parentDoc.querySelector('input[aria-label="canvas_bridge"]');
                 
                 if (bridgeInput) {
-                    // React 16+ 强制触发 Input 事件黑科技
                     const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
                     nativeInputValueSetter.call(bridgeInput, payload);
                     bridgeInput.dispatchEvent(new Event('input', { bubbles: true }));
-                } else {
-                    console.error("未找到数据桥梁");
                 }
             } else {
                 alert("目前只支持将图片添加到对话！");
@@ -111,7 +106,7 @@
         }
 
         // ==========================================
-        // 交互逻辑：悬浮栏计算、上传、操作
+        // 🌟 核心修复：精准计算悬浮工具栏位置 (死死吸附)
         // ==========================================
         const ctxToolbar = document.getElementById('context-toolbar');
         canvas.on('selection:created', updateToolbarPosition);
@@ -121,15 +116,32 @@
 
         function updateToolbarPosition() {
             const target = canvas.getActiveObject();
-            if (target) {
-                const targetPoint = target.getPointByOrigin("center", "top");
-                const screenPoint = fabric.util.transformPoint(targetPoint, canvas.viewportTransform);
-                ctxToolbar.style.display = 'flex';
-                ctxToolbar.style.left = (screenPoint.x + (wrapper.clientWidth - canvas.width * canvas.getZoom())/2 ) - (ctxToolbar.offsetWidth / 2) + 'px';
-                ctxToolbar.style.top = (screenPoint.y + (wrapper.clientHeight - canvas.height * canvas.getZoom())/2 + 72 - ctxToolbar.offsetHeight - 25) + 'px';
+            if (!target) return;
+            
+            // getBoundingRect 能够完美捕捉经过缩放、平移和旋转后的元素真实边界框
+            const bound = target.getBoundingRect();
+            
+            ctxToolbar.style.display = 'flex';
+            
+            const toolbarWidth = ctxToolbar.offsetWidth;
+            const toolbarHeight = ctxToolbar.offsetHeight;
+            
+            // 定位到元素正上方居中，预留 15px 间距
+            let left = bound.left + (bound.width / 2) - (toolbarWidth / 2);
+            let top = bound.top - toolbarHeight - 15;
+            
+            // 防止工具栏超出画布可视区域
+            if (top < 10) top = 10;
+            if (left < 10) left = 10;
+            if (left + toolbarWidth > wrapper.clientWidth - 10) {
+                left = wrapper.clientWidth - toolbarWidth - 10;
             }
+            
+            ctxToolbar.style.left = left + 'px';
+            ctxToolbar.style.top = top + 'px';
         }
 
+        // --- 其他交互逻辑 ---
         function handleLocalImage(input) {
             const file = input.files[0];
             if(!file) return;
@@ -165,9 +177,7 @@
             }
         }
 
-        // ==========================================
-        // 拖拽与缩放逻辑
-        // ==========================================
+        // --- 空格键拖拽与缩放逻辑 ---
         let isSpaceDown = false;
         
         wrapper.addEventListener('mousewheel', (opt) => {
@@ -223,7 +233,6 @@
             canvas.relativePan(new fabric.Point((wrapper.clientWidth - canvas.width * canvas.getZoom()) / 2, (wrapper.clientHeight - canvas.height * canvas.getZoom()) / 2));
         });
 
-        // 提供给 Python 注入的加载函数
         window.addImageToCanvas = function(url) {
             fabric.Image.fromURL(url, function(img) {
                 img.scaleToWidth(400);
