@@ -99,15 +99,13 @@ with col_main:
             cols = st.columns(min(len(uploaded_files)-1, 5))
             for idx, file in enumerate(uploaded_files[1:]):
                 with cols[idx % 5]:
-                    # 【究极防崩溃修复区】
+                    # 【降维打击修复区】：彻底抛弃 st.image，用原生 HTML 强制渲染！
                     try:
-                        # 强行解码成标准 RGB 格式，并压缩成缩略图，杜绝内存和渲染报错
-                        preview_img = Image.open(file).convert("RGB")
-                        preview_img.thumbnail((256, 256))
-                        st.image(preview_img, use_container_width=True)
-                        file.seek(0) # 拨回指针，确保传给 AI 的时候是完整的图片
+                        b64_img = base64.b64encode(file.getvalue()).decode("utf-8")
+                        html_code = f'<img src="data:image/jpeg;base64,{b64_img}" style="width:100%; border-radius:8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">'
+                        st.markdown(html_code, unsafe_allow_html=True)
                     except Exception as e:
-                        st.warning("⚠️ 预览图显示失败，但不影响生成")
+                        st.warning("预览图异常")
 
         st.caption("在下方区域使用鼠标绘制内容，它将作为主垫图参考：")
         canvas_result = st_canvas(
