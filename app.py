@@ -15,7 +15,7 @@ from streamlit_drawable_canvas import st_canvas
 st.set_page_config(page_title="image-2 V2", page_icon="🎨", layout="wide")
 
 # ==========================================
-# 1. 安全密钥读取与映射 [cite: 1, 2, 21]
+# 1. 安全密钥读取与映射
 # ==========================================
 KEY_MAP = {
     "vip888": "API_VIP",
@@ -48,7 +48,7 @@ else:
     st.stop()
 
 # ==========================================
-# 2. 增强版任务与积分持久化系统 [cite: 15, 17, 18, 21]
+# 2. 任务持久化系统
 # ==========================================
 TASKS_FILE = "tasks_history.json"
 def load_tasks():
@@ -85,7 +85,7 @@ def add_task(item):
     save_tasks(tasks)
 
 # ==========================================
-# 3. 图像处理辅助函数 [cite: 13, 14, 15, 21]
+# 3. 图像处理辅助函数
 # ==========================================
 def pil_to_data_uri(img):
     buffered = io.BytesIO()
@@ -101,7 +101,7 @@ def pil_to_data_uri(img):
     return f"data:image/jpeg;base64,{base64_str}"
 
 # ==========================================
-# 4. 弹窗子页面：实时追踪进度 (带动画) [cite: 17, 19, 21]
+# 4. 弹窗子页面：实时追踪进度 (带动画)
 # ==========================================
 @st.experimental_dialog("🔍 实时生图进度", width="large")
 def show_progress_dialog(task_id, prompt_text):
@@ -147,17 +147,19 @@ def show_progress_dialog(task_id, prompt_text):
         time.sleep(3)
 
 # ==========================================
-# 5. 前端网页 UI 布局 [cite: 19, 21]
+# 5. 前端网页 UI 布局
 # ==========================================
 st.title("🚀 image-2 V2")
 
+# --- 侧边栏积分状态美化 ---
 current_points = KEY_POINTS.get(user_key, 600)
 cost_input = 600
 max_images = int(current_points / cost_input)
 
 st.sidebar.markdown("---")
 st.sidebar.markdown("#### ⚙️ 积分状态")
-st.sidebar.markdown(f"**剩余可制图数量:** `≈ **{max_images}** 张` [cite: 21]")
+# 【核心修正】：删掉 cite，并将张数标红加粗
+st.sidebar.markdown(f'剩余可制图数量: <span style="color:#FF4B4B; font-weight:bold; font-size:18px;">{max_images}</span> 张', unsafe_allow_html=True)
 
 col_main, col_history = st.columns([7, 3])
 
@@ -239,32 +241,27 @@ with col_main:
             except Exception as e: st.error(f"网络异常：{e}")
 
 # ==========================================
-# 6. 右侧独立滚动区域：已提交图片任务 [cite: 21]
+# 6. 右侧独立滚动区域：已提交图片任务
 # ==========================================
 with col_history:
-    # 按照需求修改标题
     st.markdown("### 🗂️ 已提交图片任务")
     st.caption("提示：只能保存近1个小时图片")
     
-    # 获取任务列表
     tasks_list = clean_and_get_tasks()
     
     if not tasks_list:
         st.info("💡 暂无提交记录。")
     else:
-        # 【核心优化】：使用 st.container 并设置高度，实现独立滚动条
-        # 高度 800 可以根据你的屏幕大小调整
         with st.container(height=800):
             for item in reversed(tasks_list):
                 with st.container():
-                    # 标题截取 20 字符并加入缩略符号 [cite: 21]
                     raw_prompt = item.get('prompt', '无描述')
                     display_title = raw_prompt[:20] + "..." if len(raw_prompt) > 20 else raw_prompt
                     
                     st.markdown(f"**任务: {display_title}**")
                     st.caption(f"🕒 提交时间: {item['time_str']}")
                     
-                    # 复制功能 [cite: 21]
+                    # 复制功能
                     with st.expander("📝 查看/复制完整提示词"):
                         st.code(raw_prompt, language=None)
                     
@@ -272,7 +269,6 @@ with col_history:
                         if st.button("🔍 追踪动画", key=f"btn_{item['task_id']}", use_container_width=True):
                             show_progress_dialog(item['task_id'], item['prompt'])
                     elif item.get('status') == 'succeeded':
-                        # HTML 渲染防止报错 [cite: 13, 14, 15, 16]
                         st.markdown(f'<img src="{item["url"]}" style="width:100%; border-radius:8px; border:1px solid #eee;">', unsafe_allow_html=True)
                         st.markdown(f"**[📥 下载高清原图]({item['url']})**")
                     elif item.get('status') == 'failed':
