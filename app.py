@@ -28,45 +28,44 @@ VALID_KEYS = ["vip888", "test1234"]
 # ==========================================
 # 2. 异步任务与历史记录持久化系统
 # ==========================================
-HISTORY_FILE = "history.json"
+TASKS_FILE = "tasks_history.json"
 
-def load_history():
-    if os.path.exists(HISTORY_FILE):
+def load_tasks():
+    if os.path.exists(TASKS_FILE):
         try:
-            with open(HISTORY_FILE, "r", encoding="utf-8") as f:
+            with open(TASKS_FILE, "r", encoding="utf-8") as f:
                 return json.load(f)
         except:
             return []
     return []
 
-def save_history(history_list):
+def save_tasks(task_list):
     try:
-        with open(HISTORY_FILE, "w", encoding="utf-8") as f:
-            json.dump(history_list, f, ensure_ascii=False)
+        with open(TASKS_FILE, "w", encoding="utf-8") as f:
+            json.dump(task_list, f, ensure_ascii=False)
     except:
         pass
 
-def clean_and_get_history():
-    if 'history' not in st.session_state:
-        st.session_state.history = load_history()
+def clean_and_get_tasks():
+    if 'tasks' not in st.session_state:
+        st.session_state.tasks = load_tasks()
         
     current_time = time.time()
-    # 过滤掉超过 3600 秒（1小时）的记录
-    valid_history = [item for item in st.session_state.history if (current_time - item['timestamp']) < 3600]
-    # 保留最近的 10 条
-    valid_history = valid_history[-10:]
+    # 仅保留1小时内的任务，且最多10条
+    valid_tasks = [t for t in st.session_state.tasks if (current_time - t['timestamp']) < 3600]
+    valid_tasks = valid_tasks[-10:]
     
-    if len(valid_history) != len(st.session_state.history):
-        st.session_state.history = valid_history
-        save_history(valid_history)
+    if len(valid_tasks) != len(st.session_state.tasks):
+        st.session_state.tasks = valid_tasks
+        save_tasks(valid_tasks)
         
-    return st.session_state.history
+    return st.session_state.tasks
 
-def add_history(item):
-    history = clean_and_get_history()
-    history.append(item)
-    st.session_state.history = history
-    save_history(history)
+def add_task(item):
+    tasks = clean_and_get_tasks()
+    tasks.append(item)
+    st.session_state.tasks = tasks
+    save_tasks(tasks)
 
 # ==========================================
 # 3. 图像处理辅助函数
@@ -85,7 +84,69 @@ def pil_to_data_uri(img):
     return f"data:image/jpeg;base64,{base64_str}"
 
 # ==========================================
-# 4. 前端网页 UI 布局
+# 4. 弹窗子页面：实时追踪进度 (小人跑步动画)
+# ==========================================
+@st.experimental_dialog("🔍 实时生图进度", width="large")
+def show_progress_dialog(task_id, prompt_text):
+    st.markdown(f"**当前任务:** `{prompt_text}`")
+    
+    progress_bar = st.progress(0)
+    status_text = st.empty()
+    
+    headers = {"Authorization": f"Bearer {GRSAI_API_KEY}", "Content-Type": "application/json"}
+    query_url = "https://grsai.dakka.com.cn/v1/draw/result"
+    
+    # 开始轮询动画
+    for i in range(40):
+        # 计算进度条和小人位置
+        p = min(5 + i*2, 95)
+        track_len = 25
+        pos = int((p / 100) * track_len)
+        track = "━" * pos + "🏃‍♂️" + "  " * (track_len - pos) + "🏁"
+        
+        status_text.markdown(f"**正在云端为您绘制中...**\n\n{track} **{p}%**")
+        progress_bar.progress(p)
+        
+        try:
+            q_res = requests.post(query_url, headers=headers, json={"id": task_id}, verify=False).json()
+            if q_res.get("code") == 0:
+                status = q_res["data"]["status"]
+                if status == "succeeded":
+                    progress_bar.progress(100)
+                    img_url = q_res["data"]["results"][0]["url"]
+                    status_text.success("✅ **生成成功！(请关闭此弹窗，即可在右侧大厅下载高清原图)**")
+                    
+                    # 更新底层状态库
+                    for t in st.session_state.tasks:
+                        if t['task_id'] == task_id:
+                            t['status'] = 'succeeded'
+                            t['url'] = img_url
+                    save_tasks(st.session_state.tasks)
+                    time.sleep(2)
+                    st.rerun() # 刷新主页
+                    
+                elif status == "failed":
+                    progress_bar.empty()
+                    reason = q_res["data"].get("failure_reason", "未知错误")
+                    if reason in ["output_moderation", "input_moderation"]: reason = "提示词或画面触发安全审查违规"
+                    status_text.error(f"❌ **生成失败！原因:** {reason}")
+                    
+                    for t in st.session_state.tasks:
+                        if t['task_id'] == task_id:
+                            t['status'] = 'failed'
+                            t['reason'] = reason
+                    save_tasks(st.session_state.tasks)
+                    time.sleep(2)
+                    st.rerun()
+        except:
+            pass
+        
+        time.sleep(3) # 每3秒查询一次
+        
+    status_text.warning("查询超时，请稍后直接在右侧任务大厅刷新状态。")
+
+# ==========================================
+# 5. 前端网页 UI 布局
 # ==========================================
 st.title("🚀 image-2 V2")
 
@@ -97,7 +158,7 @@ if user_key not in VALID_KEYS:
     st.stop()
 st.sidebar.success("✅ 验证通过，欢迎使用！")
 
-# 左侧功能区 占7成， 右侧任务区 占3成
+# 左侧功能区(7成)，右侧任务区(3成)
 col_main, col_history = st.columns([7, 3])
 
 with col_main:
@@ -113,39 +174,43 @@ with col_main:
         with col1_2:
             quality_txt = st.selectbox("💎 图片质量", ["auto", "high", "medium", "low"], key="txt_quality")
             
-        btn_txt2img = st.button("✨ 立即提交生成 (异步)")
+        btn_txt2img = st.button("✨ 提交任务 (异步排队)")
 
     with tab2:
         st.markdown("#### 🖌️ 上传参考图或在下方画布涂鸦")
         
-        uploaded_files = st.file_uploader("可选：上传参考图 (支持多选，第1张作为画布底图)", type=["png", "jpg", "jpeg"], accept_multiple_files=True)
+        uploaded_files = st.file_uploader("支持一次性框选多张图上传", type=["png", "jpg", "jpeg"], accept_multiple_files=True)
         
+        # 【核心优化】：直观、清晰的小缩略图展示，彻底解决看不清图1、图2的问题
         canvas_bg = None
         if uploaded_files:
-            try:
-                canvas_bg = Image.open(io.BytesIO(uploaded_files[0].getvalue()))
-                canvas_bg.thumbnail((1024, 1024))
-            except:
-                pass
-                
-        if uploaded_files and len(uploaded_files) > 1:
-            # 极简预览：只显示图1、图2，隐藏任何报错警告
-            cols = st.columns(min(len(uploaded_files)-1, 5))
-            for idx, file in enumerate(uploaded_files[1:]):
-                with cols[idx % 5]:
-                    try:
-                        bytes_data = file.getvalue()
-                        b64_str = base64.b64encode(bytes_data).decode("utf-8")
-                        mime_type = file.type if file.type else "image/jpeg"
-                        html_img = f'''
-                        <div style="background: #f8f9fa; padding: 4px; border-radius: 6px; text-align: center;">
-                            <span style="font-size: 12px; font-weight: bold; color: #666;">图{idx+1}</span><br>
-                            <img src="data:{mime_type};base64,{b64_str}" style="height: 50px; border-radius: 4px; object-fit: cover;">
-                        </div>
-                        '''
-                        st.markdown(html_img, unsafe_allow_html=True)
-                    except:
-                        pass 
+            st.markdown("📎 **您上传的图片预览：**")
+            html_snippets = []
+            for idx, file in enumerate(uploaded_files):
+                try:
+                    # 提取第一张作为画板底图
+                    if idx == 0:
+                        canvas_bg = Image.open(io.BytesIO(file.getvalue()))
+                        canvas_bg.thumbnail((1024, 1024))
+                        
+                    # 生成所有上传图片的精美缩略图 (纯HTML渲染绝不报错)
+                    bytes_data = file.getvalue()
+                    b64_str = base64.b64encode(bytes_data).decode("utf-8")
+                    mime_type = file.type if file.type else "image/jpeg"
+                    label = "图1 (画板底图)" if idx == 0 else f"图{idx+1} (附加参考)"
+                    
+                    html_img = f'''
+                    <div style="display: inline-block; margin-right: 15px; margin-bottom: 10px; text-align: center; background: #f0f2f6; padding: 8px; border-radius: 8px; border: 1px solid #ddd;">
+                        <div style="font-size: 13px; font-weight: bold; color: #444; margin-bottom: 6px;">{label}</div>
+                        <img src="data:{mime_type};base64,{b64_str}" style="height: 80px; width: 80px; object-fit: cover; border-radius: 4px; border: 1px solid #ccc; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                    </div>
+                    '''
+                    html_snippets.append(html_img)
+                except:
+                    pass
+            
+            if html_snippets:
+                st.markdown("".join(html_snippets), unsafe_allow_html=True)
 
         st.caption("在下方区域使用鼠标绘制内容，它将作为主垫图参考：")
         canvas_result = st_canvas(
@@ -160,10 +225,10 @@ with col_main:
         )
         
         prompt_img = st.text_area("画面描述 (修改指令或最终画面描述)", height=80, key="img2img_prompt")
-        btn_img2img = st.button("✨ 立即提交生成 (异步)")
+        btn_img2img = st.button("✨ 提交任务 (异步排队)")
 
     # ==========================================
-    # 5. 核心 API 交互 (异步不阻塞逻辑)
+    # 6. 核心 API 提交 (真正的异步秒提)
     # ==========================================
     if btn_txt2img or btn_img2img:
         mode = "txt2img" if btn_txt2img else "img2img"
@@ -209,94 +274,63 @@ with col_main:
                 if sub_res.get("code") == 0:
                     task_id = sub_res["data"]["id"]
                     
-                    # ✨ 核心：提交后不等待，直接把任务放进右侧队列！
-                    add_history({
+                    # 秒级提交：直接存入本地任务大厅，不阻塞页面！
+                    add_task({
                         "task_id": task_id,
                         "timestamp": time.time(),
                         "time_str": datetime.now().strftime("%H:%M:%S"),
                         "prompt": current_prompt,
-                        "status": "running", # 初始状态：运行中
+                        "status": "running", 
                         "url": "",
                         "reason": ""
                     })
                     
-                    st.success("🎉 任务已提交至云端！左侧已清空，您可以继续写下一个提示词了。请在右侧点击【🔄 刷新】查看进度。")
+                    st.success("🎉 任务已极速发送至云端！请在右侧任务大厅点击【🔍 实时追踪】查看动画进度。")
                     time.sleep(1.5)
-                    st.rerun() # 瞬间刷新页面，解锁左侧供用户继续用
+                    st.rerun() # 解除阻塞，允许用户立刻写下一个提示词
                 else:
                     st.error(f"⚠️ 提交接口报错：{sub_res.get('msg', sub_res)}")
             except Exception as e:
                 st.error(f"❌ 网络或系统异常：{e}")
 
 # ==========================================
-# 6. 右侧任务队列与画廊 (折叠面板设计)
+# 7. 右侧任务大厅 (异步管理)
 # ==========================================
 with col_history:
     st.markdown("### 🗂️ 任务大厅")
-    st.caption("提示：只能保存近1个小时图片。")
+    st.caption("提示：由于系统资源限制，队列仅保留1小时内任务。")
     
-    history_list = clean_and_get_history()
+    tasks_list = clean_and_get_tasks()
     
-    # 刷新按钮逻辑：一键查询所有在排队的任务
-    if st.button("🔄 刷新全部生成进度", use_container_width=True):
-        with st.spinner("正在向云端同步状态..."):
-            updated = False
-            for item in history_list:
-                if item.get('status') == 'running':
-                    query_url = "https://grsai.dakka.com.cn/v1/draw/result"
-                    headers = {"Authorization": f"Bearer {GRSAI_API_KEY}", "Content-Type": "application/json"}
-                    try:
-                        q_res = requests.post(query_url, headers=headers, json={"id": item['task_id']}, verify=False).json()
-                        if q_res.get("code") == 0:
-                            new_status = q_res["data"]["status"]
-                            if new_status == "succeeded":
-                                item['status'] = 'succeeded'
-                                item['url'] = q_res["data"]["results"][0]["url"]
-                                updated = True
-                            elif new_status == "failed":
-                                item['status'] = 'failed'
-                                r = q_res["data"].get("failure_reason", "未知")
-                                if r in ["output_moderation", "input_moderation"]: r = "内容违规"
-                                item['reason'] = r
-                                updated = True
-                    except:
-                        pass
-            if updated:
-                save_history(history_list)
-                st.session_state.history = history_list
-        st.rerun()
-    
-    if not history_list:
-        st.info("💡 队列为空，快去左侧提交任务吧！")
+    if not tasks_list:
+        st.info("💡 暂无进行中的任务，快去左侧生成吧！")
     else:
-        # 倒序展示：最新的排在最上面
-        for item in reversed(history_list):
-            
-            # 根据状态决定图标
-            if item.get('status') == 'succeeded':
-                icon = "✅"
-            elif item.get('status') == 'failed':
-                icon = "❌"
-            else:
-                icon = "🏃‍♂️"
+        # 倒序展示：最新提交的排在最上面
+        for item in reversed(tasks_list):
+            with st.container():
+                st.markdown(f"**[{item['time_str']}]**")
+                short_prompt = item['prompt'][:15] + "..." if len(item['prompt']) > 15 else item['prompt']
+                st.caption(f"✍️ {short_prompt}")
                 
-            short_prompt = item['prompt'][:10] + "..." if len(item['prompt']) > 10 else item['prompt']
-            label = f"{icon} [{item['time_str']}] {short_prompt}"
-            
-            # 使用折叠面板展示，点进去才能看图
-            with st.expander(label):
-                st.write(f"**描述:** {item['prompt']}")
-                
+                # 核心：根据状态展示不同界面
                 if item.get('status') == 'running':
-                    st.info("━🏃‍♂️━━━━━━━━🏁 冲刺中... \n\n👉 请点击上方【🔄 刷新进度】按钮获取最新状态")
+                    st.info("🔄 任务云端作画中...")
+                    # 这里的弹窗按钮实现了“点进去弹出子页面看小人动画”的需求！
+                    if st.button("🔍 实时追踪 / 查看动画", key=f"btn_{item['task_id']}", use_container_width=True):
+                        show_progress_dialog(item['task_id'], item['prompt'])
                 
                 elif item.get('status') == 'failed':
-                    st.error(f"生成失败原因: {item.get('reason', '未知错误')}")
-                
-                elif item.get('status') == 'succeeded':
-                    # 100% 抛弃 st.image，用 HTML 彻底杜绝 TypeError 报错
-                    html_img = f'<img src="{item["url"]}" style="width:100%; border-radius:8px; border:1px solid #ddd; margin-bottom: 10px;">'
-                    st.markdown(html_img, unsafe_allow_html=True)
+                    st.error(f"❌ 失败: {item.get('reason', '未知')}")
                     
-                    # 直接提供带链接的高清下载文字（点击直接在浏览器新标签页打开原图）
-                    st.markdown(f"**[📥 点击这里在浏览器中打开并保存高清原图]({item['url']})**")
+                elif item.get('status') == 'succeeded':
+                    # 1000% 抛弃 st.image，用纯粹的 HTML 代码显示，绝对杜绝 TypeError！
+                    html_result = f'''
+                    <div style="border: 1px solid #ddd; padding: 4px; border-radius: 8px; background: #fff;">
+                        <img src="{item["url"]}" style="width:100%; border-radius:4px; display: block; margin-bottom: 8px;">
+                    </div>
+                    '''
+                    st.markdown(html_result, unsafe_allow_html=True)
+                    # 高清下载外链
+                    st.markdown(f"**[📥 点击这里在浏览器打开并保存高清原图]({item['url']})**")
+                    
+                st.divider()
