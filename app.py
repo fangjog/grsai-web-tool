@@ -101,7 +101,7 @@ def pil_to_data_uri(img):
     return f"data:image/jpeg;base64,{base64_str}"
 
 # ==========================================
-# 4. 弹窗子页面：实时追踪进度 (带动画)
+# 4. 弹窗子页面：实时追踪进度
 # ==========================================
 @st.experimental_dialog("🔍 实时生图进度", width="large")
 def show_progress_dialog(task_id, prompt_text):
@@ -151,14 +151,14 @@ def show_progress_dialog(task_id, prompt_text):
 # ==========================================
 st.title("🚀 image-2 V2")
 
-# --- 侧边栏积分状态美化 ---
+# --- 侧边栏积分状态优化 ---
 current_points = KEY_POINTS.get(user_key, 600)
 cost_input = 600
 max_images = int(current_points / cost_input)
 
 st.sidebar.markdown("---")
 st.sidebar.markdown("#### ⚙️ 积分状态")
-# 【核心修正】：删掉 cite，并将张数标红加粗
+# 【修正需求】：张数标红加粗，移除所有 cite 标记
 st.sidebar.markdown(f'剩余可制图数量: <span style="color:#FF4B4B; font-weight:bold; font-size:18px;">{max_images}</span> 张', unsafe_allow_html=True)
 
 col_main, col_history = st.columns([7, 3])
@@ -177,7 +177,7 @@ with col_main:
 
     with tab2:
         st.markdown("#### 🖌️ 上传参考图或在下方画布涂鸦")
-        uploaded_files = st.file_uploader("支持多张上传", type=["png", "jpg", "jpeg"], accept_multiple_files=True)
+        uploaded_files = st.file_uploader("支持多张上传，第1张将作为画板背景", type=["png", "jpg", "jpeg"], accept_multiple_files=True)
         canvas_bg = None
         if uploaded_files:
             st.markdown("📎 **上传预览：**")
@@ -188,11 +188,11 @@ with col_main:
                         canvas_bg = Image.open(io.BytesIO(file.getvalue()))
                         canvas_bg.thumbnail((1024, 1024))
                     b64_str = base64.b64encode(file.getvalue()).decode("utf-8")
-                    label = "图1 (底图)" if idx == 0 else f"图{idx+1}"
+                    label = "图1 (主参考)" if idx == 0 else f"图{idx+1}"
                     html_img = f'''
                     <div style="display: inline-block; margin-right: 10px; text-align: center;">
                         <div style="font-size: 11px; color: #666;">{label}</div>
-                        <img src="data:image/jpeg;base64,{b64_str}" style="height: 60px; border-radius: 4px;">
+                        <img src="data:image/jpeg;base64,{b64_str}" style="height: 60px; border-radius: 4px; border: 1px solid #ddd;">
                     </div>
                     '''
                     html_snippets.append(html_img)
@@ -214,16 +214,21 @@ with col_main:
             st.error("❌ 请输入提示词！")
         else:
             payload = {"model": "gpt-image-2", "prompt": current_prompt, "webHook": "-1", "shutProgress": True}
+            
+            # --- 【核心 Bug 修复区】：完善图生图参考逻辑 ---
             if mode == "img2img":
                 urls_list = []
-                if canvas_result.image_data is not None:
-                    canvas_pil = Image.fromarray(canvas_result.image_data.astype('uint8'), 'RGBA')
-                    urls_list.append(pil_to_data_uri(canvas_pil))
-                if uploaded_files and len(uploaded_files) > 1:
-                    for file in uploaded_files[1:]:
+                # 1. 包含所有上传的图片（修复了之前漏掉图1的错误）
+                if uploaded_files:
+                    for file in uploaded_files:
                         try:
                             urls_list.append(pil_to_data_uri(Image.open(io.BytesIO(file.getvalue()))))
                         except: pass
+                # 2. 只有当画板上有涂鸦时，才添加涂鸦层
+                if canvas_result.json_data and len(canvas_result.json_data["objects"]) > 0:
+                    canvas_pil = Image.fromarray(canvas_result.image_data.astype('uint8'), 'RGBA')
+                    urls_list.append(pil_to_data_uri(canvas_pil))
+                
                 payload["urls"] = urls_list 
             else:
                 payload["aspectRatio"] = aspect_ratio_txt
@@ -248,13 +253,13 @@ with col_history:
     st.caption("提示：只能保存近1个小时图片")
     
     tasks_list = clean_and_get_tasks()
-    
     if not tasks_list:
         st.info("💡 暂无提交记录。")
     else:
         with st.container(height=800):
             for item in reversed(tasks_list):
                 with st.container():
+                    # 标题截取 20 字符
                     raw_prompt = item.get('prompt', '无描述')
                     display_title = raw_prompt[:20] + "..." if len(raw_prompt) > 20 else raw_prompt
                     
