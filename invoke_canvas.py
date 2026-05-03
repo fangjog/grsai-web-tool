@@ -1,34 +1,36 @@
 # 文件名: invoke_canvas.py
 import streamlit as st
 import streamlit.components.v1 as components
+import os
 
 def render_canvas_workspace(api_key):
     """
     独立渲染专业画布工作台模块
+    (完全静态化，无需启动额外的 Node.js 服务器)
     """
-    st.title("🎨 专业画布工作台 (InvokeAI 架构版)")
+    st.title("🎨 专业画布工作台")
     
     st.markdown("""
         <div style="background-color: #eef1f6; padding: 15px; border-radius: 8px; border-left: 5px solid #00c2ff; margin-bottom: 20px;">
-            <h4>🚀 架构升级说明</h4>
-            <p>下方已成功嵌入独立的前端画布引擎。请确保您的本地或服务器已在 <code>http://localhost:3000</code> 启动了该前端服务。</p>
+            <h4>🚀 开箱即用架构</h4>
+            <p>此画板由底层 <code>Fabric.js</code> 驱动，代码已完全内置于您的 Git 仓库。<b>无需配置环境，无需启动外部端口</b>，任意用户 clone 后即可体验丝滑的元素拖拽、层级管理与缩放。</p>
         </div>
     """, unsafe_allow_html=True)
 
-    st.markdown("##### 🛠️ 独立画布交互区")
+    # ==========================================
+    # 🌟 核心：读取本地 HTML 并直接嵌入
+    # ==========================================
+    # 获取当前 Python 文件所在的目录，并找到 HTML 文件
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    html_file_path = os.path.join(current_dir, "canvas_engine.html")
     
-    # ==========================================
-    # 🌟 核心：嵌入 InvokeAI 前端画布
-    # ==========================================
-    # 参数说明：
-    # url: 你的 InvokeAI 或 React 前端运行的地址
-    # height: iframe 的高度（根据你的屏幕调节，800 比较适合全屏画板）
-    # scrolling: 是否允许 iframe 内部滚动
     try:
-        components.iframe(
-            src="http://localhost:3000", 
-            height=850, 
-            scrolling=True
-        )
-    except Exception as e:
-        st.error(f"加载前端服务失败，请检查服务状态。错误: {e}")
+        # 读取 HTML 文件内容
+        with open(html_file_path, "r", encoding="utf-8") as f:
+            html_code = f.read()
+            
+        # 使用 components.html 将其直接渲染在页面上！
+        components.html(html_code, height=750, scrolling=False)
+        
+    except FileNotFoundError:
+        st.error(f"⚠️ 找不到画布文件！请确保 `canvas_engine.html` 与 `app.py` 在同一个目录下。")
