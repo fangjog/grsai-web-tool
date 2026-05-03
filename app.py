@@ -24,7 +24,7 @@ KEY_MAP = {
     "123": "API_123"
 }
 
-# 激活码与初始赠送积分的映射关系
+# 激活码与积分余额的映射关系
 KEY_POINTS = {
     "vip888": 10000,
     "test1234": 5000,
@@ -32,7 +32,7 @@ KEY_POINTS = {
     "free_trial": 600
 }
 
-# 读取激活码
+# 侧边栏：输入激活码
 user_key = st.sidebar.text_input("🔑 请输入激活码/卡密", type="password")
 
 if not user_key or user_key not in KEY_MAP:
@@ -42,7 +42,6 @@ if not user_key or user_key not in KEY_MAP:
 st.sidebar.success("✅ 验证通过，欢迎使用！")
 
 try:
-    # 动态获取对应的 API Key
     secret_name = KEY_MAP[user_key]
     GRSAI_API_KEY = st.secrets[secret_name]
 except:
@@ -124,7 +123,7 @@ def pil_to_data_uri(img):
     return f"data:image/jpeg;base64,{base64_str}"
 
 # ==========================================
-# 4. 弹窗子页面：实时追踪进度
+# 4. 弹窗子页面：实时追踪进度 (带小人跑步动画)
 # ==========================================
 @st.experimental_dialog("🔍 实时生图进度", width="large")
 def show_progress_dialog(task_id, prompt_text):
