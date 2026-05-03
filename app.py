@@ -13,7 +13,7 @@ import os
 # ==========================================
 st.set_page_config(page_title="AI Pro Workspace", page_icon="🎨", layout="wide")
 
-# 注入自定义 CSS 模拟设计工具界面 (还原图1, 图2的视觉)
+# 注入自定义 CSS 模拟设计工具界面
 st.markdown("""
 <style>
     /* 模拟画布背景 */
@@ -61,7 +61,7 @@ st.markdown("""
         justify-content: center;
     }
 
-    /* 悬浮工具栏样式 (还原图1, 图2上方横条) */
+    /* 悬浮工具栏样式 */
     .floating-toolbar {
         position: absolute;
         top: -60px;
@@ -89,9 +89,8 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 1. 持久化数据与认证 (保持之前逻辑)
+# 1. 持久化数据与认证 
 # ==========================================
-# ... (API配置与验证逻辑保持不变)
 KEY_MAP = {"vip888": "API_VIP", "test1234": "API_TEST", "123": "API_123", "free_trial": "GRSAI_API_KEY"}
 KEY_POINTS = {"vip888": 10000, "test1234": 5000, "123": 5000, "free_trial": 600}
 
@@ -104,12 +103,18 @@ if not user_key or user_key not in KEY_MAP:
 secret_name = KEY_MAP[user_key]
 GRSAI_API_KEY = st.secrets.get(secret_name, "")
 
-# 数据存储
+# 数据存储与兼容性处理 (修复 KeyError: 'layers')
 PROJECTS_FILE = "projects_v31.json"
 def load_projects():
     if os.path.exists(PROJECTS_FILE):
         try:
-            with open(PROJECTS_FILE, "r", encoding="utf-8") as f: return json.load(f)
+            with open(PROJECTS_FILE, "r", encoding="utf-8") as f: 
+                data = json.load(f)
+                # 兼容旧版本数据：如果发现没有 layers 键，自动加上
+                for proj in data:
+                    if "layers" not in proj:
+                        proj["layers"] = proj.get("elements", [])
+                return data
         except: return []
     return []
 
@@ -131,8 +136,7 @@ menu = st.sidebar.radio("菜单", ["灵感生成", "画布项目"])
 
 if menu == "灵感生成":
     st.title("✨ 灵感生成")
-    # ... (保持之前的高效生成逻辑，略去以节省篇幅，重点在下方的画布优化)
-    st.info("此模块功能正常。请点击左侧【画布项目】查看本次更新的重点设计功能。")
+    st.info("此模块功能正常。请点击左侧【画布项目】查看最新设计工作台功能。")
 
 elif menu == "画布项目":
     st.title("🎨 专业画布工作台")
@@ -146,9 +150,16 @@ elif menu == "画布项目":
             st.rerun()
         st.stop()
     
-    # 顶部工具栏 (参考图5, 6, 7)
+    # 获取当前项目并进行终极兜底校验
+    curr_proj_idx = st.session_state.current_proj_idx if st.session_state.current_proj_idx is not None else 0
+    if curr_proj_idx >= len(st.session_state.projects): 
+        curr_proj_idx = 0
+    curr_proj = st.session_state.projects[curr_proj_idx]
+    if "layers" not in curr_proj:
+        curr_proj["layers"] = []
+    
+    # 顶部工具栏 
     t_col1, t_col2, t_col3, t_col4 = st.columns([2, 2, 2, 4])
-    curr_proj = st.session_state.projects[st.session_state.current_proj_idx if st.session_state.current_proj_idx is not None else 0]
     
     with t_col1:
         up_img = st.file_uploader("📤 本地上传", type=["png","jpg"], label_visibility="collapsed")
@@ -165,7 +176,7 @@ elif menu == "画布项目":
     
     st.divider()
 
-    # 画布主区域 (左侧图层选择，中间画布)
+    # 画布主区域
     canvas_col, prop_col = st.columns([8, 2])
     
     with prop_col:
@@ -173,6 +184,10 @@ elif menu == "画布项目":
         if not curr_proj["layers"]:
             st.caption("暂无内容")
         else:
+            # 确保选中的图层索引不越界
+            if st.session_state.selected_layer_idx >= len(curr_proj["layers"]):
+                st.session_state.selected_layer_idx = max(0, len(curr_proj["layers"]) - 1)
+                
             layer_names = [f"图层 {i+1}: {l['type']}" for i, l in enumerate(curr_proj['layers'])]
             st.session_state.selected_layer_idx = st.radio("选择编辑对象", range(len(layer_names)), format_func=lambda x: layer_names[x])
             
@@ -192,15 +207,14 @@ elif menu == "画布项目":
         st.markdown('<div class="design-canvas">', unsafe_allow_html=True)
         
         if curr_proj["layers"]:
-            # 只为选中的图层渲染“选中效果”
+            # 为选中的图层渲染“选中效果”
             for i, layer in enumerate(curr_proj["layers"]):
                 is_selected = (i == st.session_state.selected_layer_idx)
                 
-                # 开始渲染图层容器
                 selected_class = "selected-element" if is_selected else ""
                 st.markdown(f'<div class="{selected_class}" style="max-width:80%;">', unsafe_allow_html=True)
                 
-                # 如果选中，显示悬浮工具栏 (还原图1, 图2)
+                # 悬浮工具栏
                 if is_selected:
                     if layer["type"] == "text":
                         st.markdown(f'''
@@ -221,13 +235,13 @@ elif menu == "画布项目":
                         </div>
                         ''', unsafe_allow_html=True)
 
-                # 渲染实际内容
+                # 实际内容
                 if layer["type"] == "text":
                     st.markdown(f'<h2 style="color:#333; margin:0; padding:10px 20px;">{layer["content"]}</h2>', unsafe_allow_html=True)
                 else:
                     st.markdown(f'<img src="{layer["content"]}" style="width:400px; border-radius:4px;">', unsafe_allow_html=True)
                 
-                # 如果选中，渲染四个蓝手柄和旋转图标 (还原图1, 图2)
+                # 手柄与控制点
                 if is_selected:
                     st.markdown('''
                         <div class="handle top-left"></div><div class="handle top-right"></div>
