@@ -2,46 +2,31 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tldraw AI Workspace</title>
+    <title>Jimeng Canvas Engine</title>
     <link rel="stylesheet" href="https://unpkg.com/@tldraw/tldraw@2.1.4/tldraw.css" />
     <style>
-        body { margin: 0; padding: 0; height: 100vh; overflow: hidden; font-family: sans-serif; background: #f8f9fa; }
-        #root { width: 100vw; height: 100vh; }
-        
-        /* 我们自定义的 AI 数据提取悬浮栏 */
-        .ai-toolbar {
-            position: absolute; bottom: 25px; left: 50%; transform: translateX(-50%);
-            z-index: 1000; display: flex; gap: 15px;
-            background: white; padding: 12px 24px; border-radius: 20px;
-            box-shadow: 0 8px 30px rgba(0,0,0,0.12); border: 1px solid #eaeaea;
+        body, html, #root { margin: 0; padding: 0; height: 100vh; width: 100vw; overflow: hidden; background: #f0f2f5; }
+        .ai-tools {
+            position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
+            z-index: 9999; display: flex; gap: 12px; background: white; padding: 10px 20px;
+            border-radius: 30px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); border: 1px solid #eee;
         }
-        .btn {
-            padding: 10px 20px; border: none; border-radius: 10px; cursor: pointer;
-            font-size: 15px; font-weight: 800; transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-            background: #f0f2f5; color: #333; display: flex; align-items: center; gap: 8px;
-        }
-        .btn:hover { background: #e4e6e9; transform: translateY(-2px); }
-        .btn-primary { background: #00c2ff; color: white; }
-        .btn-primary:hover { background: #00aadd; box-shadow: 0 4px 15px rgba(0, 194, 255, 0.4); }
+        .btn-extract { background: #00c2ff; color: white; border: none; padding: 8px 18px; border-radius: 20px; font-weight: bold; cursor: pointer; }
     </style>
-
     <script type="importmap">
-        {
-            "imports": {
-                "react": "https://esm.sh/react@18.2.0",
-                "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
-                "@tldraw/tldraw": "https://esm.sh/@tldraw/tldraw@2.1.4?deps=react@18.2.0,react-dom@18.2.0"
-            }
-        }
+        { "imports": {
+            "react": "https://esm.sh/react@18.2.0",
+            "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+            "@tldraw/tldraw": "https://esm.sh/@tldraw/tldraw@2.1.4?deps=react@18.2.0,react-dom@18.2.0"
+        } }
     </script>
 </head>
 <body>
     <div id="root"></div>
-
-    <div class="ai-toolbar">
-        <button class="btn btn-primary" id="btn-extract">💬 将选中的元素添加到对话</button>
-        <button class="btn" id="btn-clear">🗑️ 清空画板</button>
+    <div class="ai-tools">
+        <button class="btn-extract" id="extract-btn">💬 添加到对话参考</button>
+        <div style="color: #ccc; width: 1px; height: 20px; background: #eee;"></div>
+        <div style="font-size: 12px; color: #999; line-height: 30px;">[V]选择 [T]文字 [P]画笔 [空格]拖拽</div>
     </div>
 
     <script type="module">
@@ -49,113 +34,39 @@
         import { createRoot } from 'react-dom/client';
         import { Tldraw, useEditor, exportToBlob } from '@tldraw/tldraw';
 
-        // 桥接组件：负责监听 Tldraw 操作并传回 Python
-        function TldrawBridge() {
+        function Bridge() {
             const editor = useEditor();
-
             useEffect(() => {
-                // 将画布实例挂载到全局，方便接收外部指令
-                window.tldrawEditor = editor;
-
-                // 1. 核心链路：提取 Tldraw 选中内容为图片，并发给 Python
-                document.getElementById('btn-extract').onclick = async () => {
-                    const selectedIds = editor.getSelectedShapeIds();
-                    if (selectedIds.length === 0) {
-                        alert("⚠️ 请先使用选择工具 (V) 框选你想提取的图片或涂鸦！");
-                        return;
-                    }
-
-                    // 调用 Tldraw 原生的高清导出功能 (提取透明背景图层)
-                    const blob = await exportToBlob({
-                        editor,
-                        ids: selectedIds,
-                        format: 'png',
-                        opts: { scale: 1.5, background: false, padding: 10 } 
-                    });
-
-                    // 转为 Base64 并打通 Streamlit 桥梁
+                window.editor = editor;
+                document.getElementById('extract-btn').onclick = async () => {
+                    const ids = editor.getSelectedShapeIds();
+                    if (ids.length === 0) return alert("请先框选画布上的内容");
+                    const blob = await exportToBlob({ editor, ids, format: 'png', opts: { background: false } });
                     const reader = new FileReader();
                     reader.onloadend = () => {
-                        const b64 = reader.result;
-                        const payload = Date.now() + "|||" + b64;
+                        const payload = Date.now() + "|||" + reader.result;
                         const bridgeInput = window.parent.document.querySelector('input[aria-label="canvas_bridge"]');
-                        
                         if (bridgeInput) {
-                            const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
-                            nativeSetter.call(bridgeInput, payload);
+                            const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
+                            setter.call(bridgeInput, payload);
                             bridgeInput.dispatchEvent(new Event('input', { bubbles: true }));
-                            
-                            // 成功提示
-                            const toast = document.createElement('div');
-                            toast.innerHTML = "✅ 已提取至右侧对话中心";
-                            toast.style = "position:fixed; top:30px; left:50%; transform:translateX(-50%); background:#22c55e; color:white; padding:12px 24px; border-radius:12px; z-index:9999; font-weight:bold; box-shadow:0 4px 15px rgba(34,197,94,0.3);";
-                            document.body.appendChild(toast);
-                            setTimeout(() => toast.remove(), 2500);
                         }
                     };
                     reader.readAsDataURL(blob);
                 };
-
-                // 2. 清空画板
-                document.getElementById('btn-clear').onclick = () => {
-                    if(confirm("确定清空全部内容吗？")) {
-                        editor.selectAll();
-                        editor.deleteShapes(editor.getSelectedShapeIds());
-                    }
-                };
             }, [editor]);
-
-            return null; // 此组件不渲染 UI，只负责逻辑
-        }
-
-        // React 主渲染树
-        function App() {
-            return React.createElement(
-                'div',
-                { style: { position: 'absolute', inset: 0 } },
-                // 渲染官方 Tldraw 组件
-                React.createElement(Tldraw, { persistenceKey: "tldraw-ai-workspace" }, 
-                    React.createElement(TldrawBridge)
-                )
-            );
+            return null;
         }
 
         const root = createRoot(document.getElementById('root'));
-        root.render(React.createElement(App));
+        root.render(React.createElement('div', { style: { inset: 0, position: 'absolute' } }, 
+            React.createElement(Tldraw, { persistenceKey: "jimeng-v5" }, React.createElement(Bridge))
+        ));
 
-        // =====================================
-        // 提供给 Python 的魔法回流函数
-        // =====================================
-        window.addImageToCanvas = async function(url) {
-            const editor = window.tldrawEditor;
-            if (!editor) return;
-
-            // Tldraw v2 插入图片必须先创建系统 Asset
+        window.addImageToCanvas = (url) => {
             const assetId = `asset:${Date.now()}`;
-            editor.createAssets([{
-                id: assetId,
-                type: 'image',
-                typeName: 'asset',
-                props: {
-                    name: 'generated-image.png',
-                    src: url,
-                    w: 512,
-                    h: 512,
-                    mimeType: 'image/png',
-                    isAnimated: false,
-                },
-                meta: {}
-            }]);
-
-            // 在视窗中央创建图形实体
-            const camera = editor.getCamera();
-            const viewport = editor.getViewportScreenBounds();
-            editor.createShapes([{
-                type: 'image',
-                x: camera.x + viewport.w / 2 - 256, 
-                y: camera.y + viewport.h / 2 - 256,
-                props: { w: 512, h: 512, assetId: assetId }
-            }]);
+            window.editor.createAssets([{ id: assetId, type: 'image', props: { src: url, w: 512, h: 512, name: 'ai.png', mimeType: 'image/png' } }]);
+            window.editor.createShapes([{ type: 'image', x: 200, y: 200, props: { assetId, w: 512, h: 512 } }]);
         };
     </script>
 </body>
