@@ -89,7 +89,8 @@ with col_main:
         canvas_bg = None
         if uploaded_files:
             try:
-                canvas_bg = Image.open(uploaded_files[0])
+                # 【核心稳定优化】：使用 io.BytesIO 安全读取，绝对不破坏原文件的指针！
+                canvas_bg = Image.open(io.BytesIO(uploaded_files[0].getvalue()))
                 canvas_bg.thumbnail((1024, 1024))
             except Exception as e:
                 st.error("首张图片读取失败。")
@@ -99,13 +100,15 @@ with col_main:
             cols = st.columns(min(len(uploaded_files)-1, 5))
             for idx, file in enumerate(uploaded_files[1:]):
                 with cols[idx % 5]:
-                    # 【降维打击修复区】：彻底抛弃 st.image，用原生 HTML 强制渲染！
+                    # 【终极解决方案】：放弃 st.image，用纯原生 HTML 强制渲染，100% 解决各种报错！
                     try:
-                        b64_img = base64.b64encode(file.getvalue()).decode("utf-8")
-                        html_code = f'<img src="data:image/jpeg;base64,{b64_img}" style="width:100%; border-radius:8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">'
-                        st.markdown(html_code, unsafe_allow_html=True)
+                        bytes_data = file.getvalue()
+                        b64_str = base64.b64encode(bytes_data).decode("utf-8")
+                        mime_type = file.type if file.type else "image/jpeg"
+                        html_img = f'<img src="data:{mime_type};base64,{b64_str}" style="width:100%; height:auto; border-radius:8px; border:1px solid #ddd;">'
+                        st.markdown(html_img, unsafe_allow_html=True)
                     except Exception as e:
-                        st.warning("预览图异常")
+                        st.error(f"显示失败: {e}")
 
         st.caption("在下方区域使用鼠标绘制内容，它将作为主垫图参考：")
         canvas_result = st_canvas(
@@ -153,7 +156,8 @@ with col_main:
                 if uploaded_files and len(uploaded_files) > 1:
                     for file in uploaded_files[1:]:
                         try:
-                            img_extra = Image.open(file)
+                            # 同样使用 io.BytesIO() 安全读取
+                            img_extra = Image.open(io.BytesIO(file.getvalue()))
                             urls_list.append(pil_to_data_uri(img_extra))
                         except Exception as e:
                             st.error(f"附加图处理失败: {e}")
