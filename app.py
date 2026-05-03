@@ -102,13 +102,10 @@ if not card_info:
 
 current_balance = card_info['total_points'] - card_info['used_points']
 
-# 🌟🌟🌟 核心修改：动态获取对应 API 密钥 🌟🌟🌟
-# 1. 从数据库读取该卡对应的 API 名字，如果没写，默认给 API_VIP888
+# 🌟 动态获取对应 API 密钥 (自动清理可能误填的单引号和空格)
 raw_api_name = card_info.get('api_secret_name') or "API_VIP888"
-# 2. 清洗多余的单引号和空格（防御性编程）
 clean_api_name = raw_api_name.strip("'").strip()
 
-# 3. 去 Secrets 里拿真正的生图密码
 GRSAI_API_KEY = st.secrets.get(clean_api_name, "")
 if not GRSAI_API_KEY:
     st.error(f"⚠️ 系统配置错误：未在 Secrets 中找到名为 `{clean_api_name}` 的密钥。")
@@ -139,13 +136,16 @@ def pil_to_data_uri(img):
     return f"data:image/jpeg;base64,{base64.b64encode(buffered.getvalue()).decode()}"
 
 # ==========================================
-# 动画进度弹窗
+# 进度展示 (移除实验性弹窗，采用稳定内嵌版)
 # ==========================================
-@st.experimental_dialog("🔍 实时生图进度", width="large")
 def show_progress_dialog(task_id, prompt_text, active_user_key):
-    st.markdown(f"**任务描述:** `{prompt_text}`")
-    progress_bar = st.progress(0)
-    status_text = st.empty()
+    with st.container():
+        st.markdown("---")
+        st.markdown(f"**🔍 实时生图进度**\n\n**任务描述:** `{prompt_text}`")
+        progress_bar = st.progress(0)
+        status_text = st.empty()
+        st.markdown("---")
+        
     headers = {"Authorization": f"Bearer {GRSAI_API_KEY}", "Content-Type": "application/json"}
     query_url = "https://grsai.dakka.com.cn/v1/draw/result"
     
