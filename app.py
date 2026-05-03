@@ -25,7 +25,7 @@ KEY_MAP = {
     "free_trial": "GRSAI_API_KEY"
 }
 # 初始总积分
-KEY_POINTS = {"vip888": 3000, "test1234": 5000, "123": 5000, "free_trial": 600}
+KEY_POINTS = {"vip888": 2400, "test1234": 5000, "123": 5000, "free_trial": 600}
 # 单张成本
 IMAGE_COST = 600
 
