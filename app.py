@@ -11,12 +11,33 @@ import os
 from streamlit_drawable_canvas import st_canvas
 
 # ==========================================
-# 0. 网页基础配置
+# 0. 网页基础配置 (加入移动端初始缩放设定)
 # ==========================================
-st.set_page_config(page_title="AI Pro Image Studio V6.0", page_icon="🚀", layout="wide")
+st.set_page_config(page_title="AI Pro Studio V6.1", page_icon="🚀", layout="wide", initial_sidebar_state="auto")
+
+# 🌟🌟🌟 注入移动端自适应 CSS 🌟🌟🌟
+st.markdown("""
+<style>
+    /* 移动端专属适配 (屏幕宽度小于768px时生效) */
+    @media (max-width: 768px) {
+        .block-container { padding: 1rem 0.5rem !important; }
+        h1 { font-size: 24px !important; }
+        h3, h4 { font-size: 18px !important; }
+        /* 让按钮在手机上变大，防误触 */
+        .stButton > button { width: 100% !important; padding: 15px !important; font-size: 16px !important; border-radius: 12px !important; }
+        /* 隐藏底部不需要的标志 */
+        footer { visibility: hidden; }
+        .stTextArea textarea { font-size: 14px !important; }
+    }
+    
+    /* PC端美化 */
+    .stButton > button { border-radius: 8px; font-weight: bold; transition: all 0.3s; }
+    .stButton > button:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+</style>
+""", unsafe_allow_html=True)
 
 # ==========================================
-# 🌟🌟🌟🌟🌟 【管理员专用配置区】 🌟🌟🌟🌟🌟
+# 🌟🌟🌟 【管理员配置区】 🌟🌟🌟
 # ==========================================
 KEY_MAP = {
     "vip888": "API_VIP",
@@ -24,8 +45,8 @@ KEY_MAP = {
     "123": "API_123",
     "free_trial": "GRSAI_API_KEY"
 }
-# 初始总积分
-KEY_POINTS = {"vip888": 2400, "test1234": 5000, "123": 5000, "free_trial": 600}
+# 恢复正常的商业额度
+KEY_POINTS = {"vip888": 3000, "test1234": 5000, "123": 5000, "free_trial": 600}
 # 单张成本
 IMAGE_COST = 600
 
@@ -43,14 +64,25 @@ def save_json(path, data):
     except: pass
 
 # ==========================================
-# 身份验证 & 动态积分扣除系统
+# 身份验证 & 记住激活码逻辑
 # ==========================================
 st.sidebar.markdown("### 🪪 身份验证")
-user_key_input = st.sidebar.text_input("🔑 请输入激活码", type="password")
+
+# 🌟 核心功能：从 URL 参数读取激活码 (记住我功能)
+query_key = st.query_params.get("key", "")
+
+# 如果 URL 里有码，直接填入输入框；没有则为空
+user_key_input = st.sidebar.text_input("🔑 请输入激活码", value=query_key, type="password", placeholder="输入激活码解锁...")
 user_key = user_key_input.strip() if user_key_input else ""
 
+if user_key:
+    # 如果用户输入了码，自动写回 URL 参数中
+    # 用户只要收藏当前网址，下次打开直接免密登录！
+    st.query_params["key"] = user_key
+
 if not user_key or user_key not in KEY_MAP:
-    st.sidebar.warning("👈 请输入激活码解锁。")
+    st.sidebar.warning("👈 请输入有效的激活码以解锁功能。")
+    st.sidebar.info("💡 提示：成功输入后，收藏本页网址即可免密登录！")
     st.stop()
 
 secret_name = KEY_MAP[user_key]
@@ -74,7 +106,6 @@ def deduct_balance(key, amount):
     usage[key] = spent + amount
     save_json(USAGE_FILE, usage)
 
-# 任务历史初始化
 if 'tasks' not in st.session_state: st.session_state.tasks = load_json(TASKS_FILE)
 
 def clean_and_get_tasks():
@@ -119,8 +150,8 @@ def show_progress_dialog(task_id, prompt_text, active_user_key):
                 if status == "succeeded":
                     progress_bar.progress(100)
                     img_url = q_res["data"]["results"][0]["url"]
-                    deduct_balance(active_user_key, IMAGE_COST) # 成功后扣款
-                    status_text.success("✅ **生成成功！(已自动扣除 1 张额度)**")
+                    deduct_balance(active_user_key, IMAGE_COST) # 成功后真实扣款
+                    status_text.success("✅ **生成成功！(已扣除 1 张额度)**")
                     for t in st.session_state.tasks:
                         if t['task_id'] == task_id:
                             t['status'] = 'succeeded'
@@ -146,9 +177,9 @@ def show_progress_dialog(task_id, prompt_text, active_user_key):
 current_balance = get_balance(user_key)
 max_images = int(current_balance // IMAGE_COST)
 
-st.sidebar.markdown(f'剩余可制图数量: <span style="color:#FF4B4B; font-weight:bold; font-size:18px;">{max_images}</span> 张', unsafe_allow_html=True)
+st.sidebar.markdown(f'剩余可制图: <span style="color:#00c2ff; font-weight:bold; font-size:22px;">{max_images}</span> 张', unsafe_allow_html=True)
 st.sidebar.divider()
-menu = st.sidebar.radio("功能导航", ["✍️ 文生图", "🖼️ 图生图"]) # 🌟 已删掉画布选项
+menu = st.sidebar.radio("功能导航", ["✍️ 文生图", "🖼️ 图生图"])
 
 # ==========================================
 # 页面内容
@@ -169,21 +200,19 @@ with col_main:
         
     else: 
         st.markdown("#### 🖼️ 图生图模式")
-        uploaded_files = st.file_uploader("📤 上传参考图 (支持多张参考)", type=["png", "jpg"], accept_multiple_files=True)
+        uploaded_files = st.file_uploader("📤 上传参考图 (支持多图)", type=["png", "jpg"], accept_multiple_files=True)
         
-        # 涂鸦板作为兜底
         canvas_result = None
         if not uploaded_files:
-            st.info("💡 提示：您也可以在下方直接涂鸦草图作为生成参考。")
+            st.info("💡 提示：在下方直接涂鸦草图也可作为生成参考。")
             canvas_result = st_canvas(
                 fill_color="rgba(255, 165, 0, 0.3)", stroke_width=3, stroke_color="#000000",
-                background_color="#ffffff", height=400, drawing_mode="freedraw", key="canvas_img2img"
+                background_color="#ffffff", height=300, drawing_mode="freedraw", key="canvas_img2img"
             )
             
         prompt_txt = st.text_area("指令/修改描述", height=80, placeholder="例如：保持原图风格，把背景换成森林...")
         btn_submit = st.button("🚀 开始垫图生成", type="primary", use_container_width=True)
 
-    # 提交逻辑
     if btn_submit:
         if get_balance(user_key) < IMAGE_COST:
             st.error("❌ 额度不足，请联系管理员充值。")
@@ -223,14 +252,13 @@ with col_main:
                 else: st.error(f"接口报错：{sub_res.get('msg', '未知故障')}")
             except Exception as e: st.error(f"网络连接异常")
 
-# 右侧历史大厅
 with col_history:
     st.markdown("### 🗂️ 创作记录")
     tasks_list = clean_and_get_tasks()
     if not tasks_list:
-        st.info("暂无生成记录。")
+        st.caption("暂无生成记录。")
     else:
-        with st.container(height=800):
+        with st.container(height=700):
             for item in reversed(tasks_list):
                 with st.container():
                     st.markdown(f"**[{item['time_str']}]**")
