@@ -12,7 +12,7 @@ from streamlit_drawable_canvas import st_canvas
 # ==========================================
 # 0. 网页基础配置
 # ==========================================
-st.set_page_config(page_title="AI Pro Workspace V4.4", page_icon="🎨", layout="wide")
+st.set_page_config(page_title="AI Pro Workspace V4.5", page_icon="🎨", layout="wide")
 
 # ==========================================
 # 🌟🌟🌟🌟🌟 【管理员专用配置区】 🌟🌟🌟🌟🌟
@@ -25,7 +25,7 @@ KEY_MAP = {
     "free_trial": "GRSAI_API_KEY"
 }
 
-# 2. 每个激活码的【初始总积分】
+# 2. 每个激活码的【初始总积分】(随时修改，立即生效！)
 KEY_POINTS = {
     "vip888": 3000,
     "test1234": 5000,
@@ -78,7 +78,7 @@ def save_json(path, data):
     except: pass
 
 # ==========================================
-# 身份验证 & 积分扣除系统
+# 身份验证 & 【全新】动态积分扣除系统
 # ==========================================
 st.sidebar.markdown("### 🪪 身份验证")
 user_key_input = st.sidebar.text_input("🔑 请输入激活码", type="password")
@@ -94,26 +94,24 @@ if not GRSAI_API_KEY:
     st.error(f"⚠️ 未在 Secrets 中找到 `{secret_name}`。")
     st.stop()
 
-BALANCES_FILE = "balances.json"
+# 文件定义：改为记录“消耗量”而不是“余额”
+USAGE_FILE = "usage_data.json"
 TASKS_FILE = "tasks_history.json"
 PROJECTS_FILE = "projects_v4.json"
 
-# 获取当前余额
+# 获取当前余额：代码中的总积分 - 已经花掉的积分
 def get_balance(key):
-    balances = load_json(BALANCES_FILE, {})
-    if key not in balances:
-        balances[key] = KEY_POINTS.get(key, 0)
-        save_json(BALANCES_FILE, balances)
-    return balances[key]
+    usage = load_json(USAGE_FILE, {})
+    spent = usage.get(key, 0)
+    total = KEY_POINTS.get(key, 0)
+    return max(0, total - spent)
 
-# 扣除余额（成功时调用）
+# 扣除余额：增加消耗量（成功时调用）
 def deduct_balance(key, amount):
-    balances = load_json(BALANCES_FILE, {})
-    if key not in balances:
-        balances[key] = KEY_POINTS.get(key, 0)
-    if balances[key] >= amount:
-        balances[key] -= amount
-        save_json(BALANCES_FILE, balances)
+    usage = load_json(USAGE_FILE, {})
+    spent = usage.get(key, 0)
+    usage[key] = spent + amount
+    save_json(USAGE_FILE, usage)
 
 # 初始化 Session State
 if 'tasks' not in st.session_state: st.session_state.tasks = load_json(TASKS_FILE)
