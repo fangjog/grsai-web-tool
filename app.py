@@ -10,21 +10,20 @@ import os
 from streamlit_drawable_canvas import st_canvas
 
 # ==========================================
-# 0. 网页基础配置 (必须是第一句)
+# 0. 网页基础配置
 # ==========================================
 st.set_page_config(page_title="image-2 V2", page_icon="🎨", layout="wide")
 
 # ==========================================
 # 1. 安全密钥读取与映射
 # ==========================================
-# 激活码与 secrets.toml 密钥变量名的对应关系
 KEY_MAP = {
     "vip888": "API_VIP",
     "test1234": "API_TEST",
-    "123": "API_123"
+    "123": "API_123",
+    "free_trial": "GRSAI_API_KEY"
 }
 
-# 激活码与积分余额的映射关系
 KEY_POINTS = {
     "vip888": 10000,
     "test1234": 5000,
@@ -32,7 +31,7 @@ KEY_POINTS = {
     "free_trial": 600
 }
 
-# 侧边栏：输入激活码
+st.sidebar.markdown("### 身份验证")
 user_key = st.sidebar.text_input("🔑 请输入激活码/卡密", type="password")
 
 if not user_key or user_key not in KEY_MAP:
@@ -44,7 +43,7 @@ st.sidebar.success("✅ 验证通过，欢迎使用！")
 try:
     secret_name = KEY_MAP[user_key]
     GRSAI_API_KEY = st.secrets[secret_name]
-except:
+except Exception as e:
     st.error("⚠️ 未在 Secrets 中找到该激活码对应的 API Key 配置。")
     st.stop()
 
@@ -123,7 +122,7 @@ def pil_to_data_uri(img):
     return f"data:image/jpeg;base64,{base64_str}"
 
 # ==========================================
-# 4. 弹窗子页面：实时追踪进度 (带小人跑步动画)
+# 4. 弹窗子页面：实时追踪进度
 # ==========================================
 @st.experimental_dialog("🔍 实时生图进度", width="large")
 def show_progress_dialog(task_id, prompt_text):
@@ -186,7 +185,7 @@ st.title("🚀 image-2 V2")
 
 current_points = KEY_POINTS.get(user_key, 600)
 saved_pts = load_points()
-cost_input = saved_pts["cost"]
+cost_input = saved_pts.get("cost", 600)
 max_images = current_points / cost_input
 
 st.sidebar.markdown("---")
