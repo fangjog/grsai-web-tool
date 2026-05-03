@@ -11,7 +11,7 @@ from supabase import create_client, Client
 # ==========================================
 # 0. 网页基础配置与移动端自适应 CSS
 # ==========================================
-st.set_page_config(page_title="AI Pro 商业版", page_icon="🎨", layout="wide")
+st.set_page_config(page_title="image-2", page_icon="🎨", layout="wide")
 
 st.markdown("""
 <style>
@@ -131,7 +131,7 @@ def pil_to_data_uri(img):
 # ==========================================
 # 4. 主界面
 # ==========================================
-st.title("🚀 AI Pro 商业创作站")
+st.title("🚀 iamge-2")
 
 if menu == "✍️ 文生图":
     prompt = st.text_area("输入创意指令", height=100)
