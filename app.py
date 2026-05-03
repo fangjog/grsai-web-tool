@@ -16,7 +16,7 @@ except:
 
 VALID_KEYS = ["vip888", "test1234"]
 
-st.set_page_config(page_title="AI 极速分镜生成器 V2", page_icon="🎨", layout="wide")
+st.set_page_config(page_title="image-2 V2", page_icon="🎨", layout="wide")
 
 # 2. 历史记录初始化 (使用 session_state，刷新页面或过时后消失)
 if 'history' not in st.session_state:
@@ -41,7 +41,7 @@ def pil_to_base64(img):
     return base64.b64encode(buffered.getvalue()).decode("utf-8")
 
 # --- 界面渲染开始 ---
-st.title("🚀 爆款信息流分镜生成器 V2")
+st.title("🚀 image-2生图 V2")
 
 # 登录验证
 user_key = st.sidebar.text_input("🔑 请输入激活码/卡密", type="password")
