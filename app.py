@@ -11,7 +11,7 @@ from supabase import create_client, Client
 # ==========================================
 # 0. 网页基础配置与移动端自适应 CSS
 # ==========================================
-st.set_page_config(page_title="AI Pro Studio 商业版", page_icon="🎨", layout="wide")
+st.set_page_config(page_title="AI Pro 商业版", page_icon="🎨", layout="wide")
 
 st.markdown("""
 <style>
@@ -79,9 +79,8 @@ st.sidebar.divider()
 menu = st.sidebar.radio("功能切换", ["✍️ 文生图", "🖼️ 图生图"])
 
 # ==========================================
-# 3. 核心 API 交互
+# 3. 核心 API 交互与进度条展示
 # ==========================================
-# 统一使用 API_VIP (之前建议的 secrets 命名)
 API_KEY = st.secrets.get("API_VIP", "") 
 
 def submit_task(payload):
@@ -89,11 +88,16 @@ def submit_task(payload):
     res = requests.post("https://grsai.dakka.com.cn/v1/draw/completions", headers=headers, json=payload, verify=False).json()
     return res
 
-@st.experimental_dialog("🎨 正在绘制中...", width="large")
+# 🌟 修复后的兼容版进度条逻辑（稳定兼容所有 Streamlit 版本）
 def poll_progress(task_id, prompt_txt):
-    st.markdown(f"**任务描述:** `{prompt_txt}`")
-    progress_bar = st.progress(0)
-    status_msg = st.empty()
+    status_container = st.container()
+    with status_container:
+        st.markdown("---")
+        st.markdown(f"### 🎨 正在绘制中...\n**任务描述:** `{prompt_txt}`")
+        progress_bar = st.progress(0)
+        status_msg = st.empty()
+        st.markdown("---")
+        
     headers = {"Authorization": f"Bearer {API_KEY}", "Content-Type": "application/json"}
     
     for _ in range(40):
@@ -105,16 +109,24 @@ def poll_progress(task_id, prompt_txt):
                     progress_bar.progress(100)
                     # 🌟 关键：生成成功后扣除数据库积分
                     update_db_used_points(st.session_state.active_user_key, IMAGE_COST)
-                    st.success("✅ 生成成功！已扣除 1 张额度。")
+                    status_msg.success("✅ 生成成功！已自动扣除 1 张额度。")
                     st.image(data["results"][0]["url"])
                     time.sleep(2)
                     st.rerun()
                 elif data["status"] == "failed":
-                    st.error(f"❌ 任务失败: {data.get('failure_reason')}")
+                    status_msg.error(f"❌ 任务失败: {data.get('failure_reason')}")
                     break
-            progress_bar.progress(30) # 模拟进度
+            progress_bar.progress(30) # 模拟进度推进
         except: pass
         time.sleep(4)
+
+# 图片转 Base64 (供图生图使用)
+def pil_to_data_uri(img):
+    buffered = io.BytesIO()
+    if img.mode != 'RGB': img = img.convert('RGB')
+    img.thumbnail((1024, 1024)) 
+    img.save(buffered, format="JPEG")
+    return f"data:image/jpeg;base64,{base64.b64encode(buffered.getvalue()).decode()}"
 
 # ==========================================
 # 4. 主界面
@@ -126,7 +138,7 @@ if menu == "✍️ 文生图":
     ratio = st.selectbox("画幅比例", ["1:1", "16:9", "9:16", "3:4", "4:3"])
     if st.button("✨ 开始生成", type="primary"):
         if st.session_state.current_balance < IMAGE_COST:
-            st.error("余额不足，请联系管理员。")
+            st.error("余额不足，请联系管理员充值。")
         elif prompt:
             res = submit_task({"model": "gpt-image-2", "prompt": prompt, "aspectRatio": ratio, "shutProgress": True})
             if res.get("code") == 0:
@@ -134,11 +146,28 @@ if menu == "✍️ 文生图":
             else: st.error(res.get("msg"))
 
 else: # 图生图
-    uploaded = st.file_uploader("上传参考图", type=["jpg", "png"], accept_multiple_files=True)
+    uploaded_files = st.file_uploader("上传参考图", type=["jpg", "png"], accept_multiple_files=True)
     prompt = st.text_area("修改描述 (可选)")
     if st.button("🚀 垫图生成", type="primary"):
         if st.session_state.current_balance < IMAGE_COST:
-            st.error("余额不足。")
+            st.error("余额不足，请联系管理员充值。")
         else:
-            # 图片转 base64 逻辑... (同前)
-            st.info("功能处理中...")
+            urls_list = []
+            if uploaded_files:
+                for file in uploaded_files:
+                    try: urls_list.append(pil_to_data_uri(Image.open(io.BytesIO(file.getvalue()))))
+                    except: pass
+            
+            if not urls_list:
+                st.error("⚠️ 请先上传至少一张参考图。")
+            else:
+                payload = {
+                    "model": "gpt-image-2", 
+                    "prompt": prompt if prompt else "保持原图风格", 
+                    "urls": urls_list,
+                    "shutProgress": True
+                }
+                res = submit_task(payload)
+                if res.get("code") == 0:
+                    poll_progress(res["data"]["id"], prompt if prompt else "图生图转换")
+                else: st.error(res.get("msg"))
