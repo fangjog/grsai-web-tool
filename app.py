@@ -10,14 +10,14 @@ import os
 from streamlit_drawable_canvas import st_canvas
 
 # ==========================================
-# 0. 网页基础配置 (必须是第一句) 
+# 0. 网页基础配置 (必须是第一句)
 # ==========================================
 st.set_page_config(page_title="image-2 V2", page_icon="🎨", layout="wide")
 
 # ==========================================
 # 1. 安全密钥读取与映射
 # ==========================================
-# 激活码与 secrets.toml 密钥变量名的对应关系 [cite: 18]
+# 激活码与 secrets.toml 密钥变量名的对应关系
 KEY_MAP = {
     "vip888": "API_VIP",
     "test1234": "API_TEST",
@@ -34,7 +34,6 @@ KEY_POINTS = {
 }
 
 st.sidebar.markdown("### 身份验证")
-# 加入 .strip() 防止用户输入时带了空格导致验证失败
 user_key_input = st.sidebar.text_input("🔑 请输入激活码/卡密", type="password")
 user_key = user_key_input.strip() if user_key_input else ""
 
@@ -42,21 +41,18 @@ if not user_key or user_key not in KEY_MAP:
     st.warning("👈 请在左侧输入有效的激活码以解锁系统。")
     st.stop()
 
-# 尝试获取 API Key，如果失败则给出更详细的提示 [cite: 20]
 secret_name = KEY_MAP[user_key]
 if secret_name in st.secrets:
     GRSAI_API_KEY = st.secrets[secret_name]
-    st.sidebar.success(f"✅ 验证通过，已加载账户：{secret_name}")
+    st.sidebar.success("✅ 验证通过")
 else:
-    st.error(f"⚠️ 找不到配置：请在 Secrets 中添加 `{secret_name} = \"你的SK密钥\"` 并保存。")
+    st.error(f"⚠️ 找不到配置：请在 Secrets 中添加 `{secret_name}`。")
     st.stop()
 
 # ==========================================
 # 2. 增强版任务与积分持久化系统
 # ==========================================
 TASKS_FILE = "tasks_history.json"
-POINTS_FILE = "points_data.json"
-
 def load_tasks():
     if os.path.exists(TASKS_FILE):
         try:
@@ -72,15 +68,6 @@ def save_tasks(task_list):
             json.dump(task_list, f, ensure_ascii=False)
     except:
         pass
-
-def load_points():
-    if os.path.exists(POINTS_FILE):
-        try:
-            with open(POINTS_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except:
-            pass
-    return {"cost": 600}
 
 def clean_and_get_tasks():
     if 'tasks' not in st.session_state:
@@ -100,7 +87,7 @@ def add_task(item):
     save_tasks(tasks)
 
 # ==========================================
-# 3. 图像处理辅助函数 (100% HTML 兼容)
+# 3. 图像处理辅助函数
 # ==========================================
 def pil_to_data_uri(img):
     buffered = io.BytesIO()
@@ -166,16 +153,15 @@ def show_progress_dialog(task_id, prompt_text):
 # ==========================================
 st.title("🚀 image-2 V2")
 
+# --- 图 2 修改：侧边栏积分状态简化 ---
 current_points = KEY_POINTS.get(user_key, 600)
-saved_pts = load_points()
-cost_input = saved_pts.get("cost", 600)
-max_images = current_points / cost_input
+cost_input = 600 # 默认消耗
+max_images = int(current_points / cost_input)
 
 st.sidebar.markdown("---")
 st.sidebar.markdown("#### ⚙️ 积分状态")
-st.sidebar.markdown(f"**可用总积分:** `{current_points}`")
-st.sidebar.markdown(f"**消耗/张:** `{cost_input}`")
-st.sidebar.markdown(f"**剩余张数:** `≈ **{int(max_images)}** 张`")
+# 只显示剩余可制图数量
+st.sidebar.markdown(f"**剩余可制图数量:** `≈ **{max_images}** 张`")
 
 col_main, col_history = st.columns([7, 3])
 
@@ -250,29 +236,40 @@ with col_main:
                 sub_res = requests.post("https://grsai.dakka.com.cn/v1/draw/completions", headers=headers, json=payload, verify=False).json()
                 if sub_res.get("code") == 0:
                     add_task({"task_id": sub_res["data"]["id"], "timestamp": time.time(), "time_str": datetime.now().strftime("%H:%M:%S"), "prompt": current_prompt, "status": "running", "url": "", "reason": ""})
-                    st.success("🎉 任务已提交！请在右侧点击查看动画。")
+                    st.success("🎉 任务已提交！")
                     time.sleep(1)
                     st.rerun()
                 else: st.error(f"接口报错：{sub_res.get('msg', '未知')}")
             except Exception as e: st.error(f"网络异常：{e}")
 
 # ==========================================
-# 6. 右侧任务大厅
+# 6. --- 图 1 修改：右侧任务大厅优化 ---
 # ==========================================
 with col_history:
     st.markdown("### 🗂️ 任务大厅")
+    st.caption("提示：只能保存近1个小时图片")
     tasks_list = clean_and_get_tasks()
     if not tasks_list:
         st.info("💡 暂无任务。")
     else:
         for item in reversed(tasks_list):
             with st.container():
-                st.markdown(f"**[{item['time_str']}]**")
+                # --- 标题逻辑：截取 20 字符 ---
+                raw_prompt = item.get('prompt', '无描述')
+                display_title = raw_prompt[:20] + "..." if len(raw_prompt) > 20 else raw_prompt
+                
+                st.markdown(f"**任务: {display_title}**")
+                st.caption(f"🕒 提交时间: {item['time_str']}")
+                
+                # --- 复制功能：使用 st.code 提供一键复制按钮 ---
+                with st.expander("📝 查看/复制完整提示词"):
+                    st.code(raw_prompt, language=None)
+                
                 if item.get('status') == 'running':
                     if st.button("🔍 追踪动画", key=f"btn_{item['task_id']}", use_container_width=True):
                         show_progress_dialog(item['task_id'], item['prompt'])
                 elif item.get('status') == 'succeeded':
-                    st.markdown(f'<img src="{item["url"]}" style="width:100%; border-radius:8px;">', unsafe_allow_html=True)
+                    st.markdown(f'<img src="{item["url"]}" style="width:100%; border-radius:8px; border:1px solid #eee;">', unsafe_allow_html=True)
                     st.markdown(f"**[📥 下载高清原图]({item['url']})**")
                 elif item.get('status') == 'failed':
                     st.error(f"❌ 失败: {item.get('reason', '未知')}")
