@@ -44,6 +44,8 @@ def pil_to_data_uri(img):
         background = Image.new('RGB', img.size, (255, 255, 255))
         background.paste(img, mask=img.split()[3])
         img = background
+    elif img.mode != 'RGB':
+        img = img.convert('RGB')
     img.thumbnail((1024, 1024)) 
     img.save(buffered, format="JPEG")
     base64_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
@@ -97,9 +99,15 @@ with col_main:
             cols = st.columns(min(len(uploaded_files)-1, 5))
             for idx, file in enumerate(uploaded_files[1:]):
                 with cols[idx % 5]:
-                    # 【终极修复区】：直接调用 getvalue() 获取底层纯二进制字节流
-                    # 这样不涉及任何文件指针和懒加载问题，100% 不会报错！
-                    st.image(file.getvalue(), use_container_width=True)
+                    # 【究极防崩溃修复区】
+                    try:
+                        # 强行解码成标准 RGB 格式，并压缩成缩略图，杜绝内存和渲染报错
+                        preview_img = Image.open(file).convert("RGB")
+                        preview_img.thumbnail((256, 256))
+                        st.image(preview_img, use_container_width=True)
+                        file.seek(0) # 拨回指针，确保传给 AI 的时候是完整的图片
+                    except Exception as e:
+                        st.warning("⚠️ 预览图显示失败，但不影响生成")
 
         st.caption("在下方区域使用鼠标绘制内容，它将作为主垫图参考：")
         canvas_result = st_canvas(
@@ -146,8 +154,11 @@ with col_main:
                 
                 if uploaded_files and len(uploaded_files) > 1:
                     for file in uploaded_files[1:]:
-                        img_extra = Image.open(file)
-                        urls_list.append(pil_to_data_uri(img_extra))
+                        try:
+                            img_extra = Image.open(file)
+                            urls_list.append(pil_to_data_uri(img_extra))
+                        except Exception as e:
+                            st.error(f"附加图处理失败: {e}")
                         
                 payload["urls"] = urls_list 
             else:
