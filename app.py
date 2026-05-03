@@ -26,12 +26,11 @@ except:
 VALID_KEYS = ["vip888", "test1234"]
 
 # ==========================================
-# 2. 增强版历史记录系统 (防止F5刷新丢失)
+# 2. 异步任务与历史记录持久化系统
 # ==========================================
 HISTORY_FILE = "history.json"
 
 def load_history():
-    """从本地文件加载历史记录，抵抗网页刷新"""
     if os.path.exists(HISTORY_FILE):
         try:
             with open(HISTORY_FILE, "r", encoding="utf-8") as f:
@@ -41,7 +40,6 @@ def load_history():
     return []
 
 def save_history(history_list):
-    """将历史记录安全保存到本地文件"""
     try:
         with open(HISTORY_FILE, "w", encoding="utf-8") as f:
             json.dump(history_list, f, ensure_ascii=False)
@@ -49,20 +47,25 @@ def save_history(history_list):
         pass
 
 def clean_and_get_history():
-    history = load_history()
+    if 'history' not in st.session_state:
+        st.session_state.history = load_history()
+        
     current_time = time.time()
     # 过滤掉超过 3600 秒（1小时）的记录
-    valid_history = [item for item in history if (current_time - item['timestamp']) < 3600]
-    # 仅保留最近的 10 条
+    valid_history = [item for item in st.session_state.history if (current_time - item['timestamp']) < 3600]
+    # 保留最近的 10 条
     valid_history = valid_history[-10:]
-    # 如果有清理动作，重新保存
-    if len(valid_history) != len(history):
+    
+    if len(valid_history) != len(st.session_state.history):
+        st.session_state.history = valid_history
         save_history(valid_history)
-    return valid_history
+        
+    return st.session_state.history
 
 def add_history(item):
     history = clean_and_get_history()
     history.append(item)
+    st.session_state.history = history
     save_history(history)
 
 # ==========================================
@@ -94,6 +97,7 @@ if user_key not in VALID_KEYS:
     st.stop()
 st.sidebar.success("✅ 验证通过，欢迎使用！")
 
+# 左侧功能区 占7成， 右侧任务区 占3成
 col_main, col_history = st.columns([7, 3])
 
 with col_main:
@@ -109,7 +113,7 @@ with col_main:
         with col1_2:
             quality_txt = st.selectbox("💎 图片质量", ["auto", "high", "medium", "low"], key="txt_quality")
             
-        btn_txt2img = st.button("✨ 立即生成 (文生图)")
+        btn_txt2img = st.button("✨ 立即提交生成 (异步)")
 
     with tab2:
         st.markdown("#### 🖌️ 上传参考图或在下方画布涂鸦")
@@ -125,26 +129,23 @@ with col_main:
                 pass
                 
         if uploaded_files and len(uploaded_files) > 1:
-            # 【优化展示】：图1、图2标识，并且强制缩小图片展示，去除所有报错提示
-            html_snippets = []
+            # 极简预览：只显示图1、图2，隐藏任何报错警告
+            cols = st.columns(min(len(uploaded_files)-1, 5))
             for idx, file in enumerate(uploaded_files[1:]):
-                try:
-                    bytes_data = file.getvalue()
-                    b64_str = base64.b64encode(bytes_data).decode("utf-8")
-                    mime_type = file.type if file.type else "image/jpeg"
-                    # 生成极简 HTML 小缩略图
-                    html_img = f'''
-                    <div style="display: inline-block; margin-right: 20px; margin-bottom: 10px; text-align: left; background: #f8f9fa; padding: 5px; border-radius: 8px;">
-                        <span style="display: inline-block; font-size: 13px; font-weight: bold; color: #333; margin-bottom: 5px;">图{idx+1}</span><br>
-                        <img src="data:{mime_type};base64,{b64_str}" style="height: 60px; width: auto; border-radius: 4px; border: 1px solid #ddd; object-fit: cover;">
-                    </div>
-                    '''
-                    html_snippets.append(html_img)
-                except:
-                    pass # 绝对不抛出任何报错和警告
-            
-            if html_snippets:
-                st.markdown("".join(html_snippets), unsafe_allow_html=True)
+                with cols[idx % 5]:
+                    try:
+                        bytes_data = file.getvalue()
+                        b64_str = base64.b64encode(bytes_data).decode("utf-8")
+                        mime_type = file.type if file.type else "image/jpeg"
+                        html_img = f'''
+                        <div style="background: #f8f9fa; padding: 4px; border-radius: 6px; text-align: center;">
+                            <span style="font-size: 12px; font-weight: bold; color: #666;">图{idx+1}</span><br>
+                            <img src="data:{mime_type};base64,{b64_str}" style="height: 50px; border-radius: 4px; object-fit: cover;">
+                        </div>
+                        '''
+                        st.markdown(html_img, unsafe_allow_html=True)
+                    except:
+                        pass 
 
         st.caption("在下方区域使用鼠标绘制内容，它将作为主垫图参考：")
         canvas_result = st_canvas(
@@ -159,10 +160,10 @@ with col_main:
         )
         
         prompt_img = st.text_area("画面描述 (修改指令或最终画面描述)", height=80, key="img2img_prompt")
-        btn_img2img = st.button("✨ 立即生成 (图生图)")
+        btn_img2img = st.button("✨ 立即提交生成 (异步)")
 
     # ==========================================
-    # 5. 核心 API 交互与请求逻辑
+    # 5. 核心 API 交互 (异步不阻塞逻辑)
     # ==========================================
     if btn_txt2img or btn_img2img:
         mode = "txt2img" if btn_txt2img else "img2img"
@@ -171,10 +172,6 @@ with col_main:
         if not current_prompt:
             st.error("❌ 提示词描述不能为空！")
         else:
-            # 预留动画位置和进度条
-            runner_placeholder = st.empty()
-            progress_bar = st.progress(0)
-            
             payload = {
                 "model": "gpt-image-2",
                 "prompt": current_prompt,
@@ -211,73 +208,95 @@ with col_main:
                 
                 if sub_res.get("code") == 0:
                     task_id = sub_res["data"]["id"]
-                    query_url = "https://grsai.dakka.com.cn/v1/draw/result"
                     
-                    for i in range(40):
-                        time.sleep(3)
-                        p = min(20 + i*2, 95)
-                        progress_bar.progress(p)
-                        
-                        # 【小人冲刺动画逻辑】
-                        track_len = 25
-                        pos = int((p / 100) * track_len)
-                        track = "━" * pos + "🏃‍♂️" + "  " * (track_len - pos) + "🏁"
-                        runner_placeholder.info(f"**正在努力生成中，请耐心等待...**\n\n{track} **{p}%**")
-                        
-                        q_res = requests.post(query_url, headers=headers, json={"id": task_id}, verify=False).json()
-                        
-                        if q_res.get("code") == 0:
-                            status = q_res["data"]["status"]
-                            
-                            if status == "succeeded":
-                                img_url = q_res["data"]["results"][0]["url"]
-                                progress_bar.progress(100)
-                                # 生成成功，小人到达终点
-                                runner_placeholder.success(f"**✅ 图片生成完毕！**\n\n{'━' * track_len}🏃‍♂️🏁 **100%**")
-                                
-                                img_data = requests.get(img_url, verify=False).content
-                                final_image = Image.open(io.BytesIO(img_data))
-                                st.image(final_image, caption="AI 生成结果")
-                                st.download_button(label="💾 下载高清原图", data=img_data, file_name=f"AI_Draw_{task_id}.jpg", mime="image/jpeg")
-                                
-                                # 将成功记录写入底层本地文件
-                                add_history({
-                                    "timestamp": time.time(),
-                                    "time_str": datetime.now().strftime("%H:%M:%S"),
-                                    "prompt": current_prompt,
-                                    "url": img_url
-                                })
-                                break
-                            elif status == "failed":
-                                reason = q_res["data"].get("failure_reason", "未知错误")
-                                error_msg = q_res["data"].get("error", "服务器未返回具体细节")
-                                if reason == "output_moderation" or reason == "input_moderation":
-                                    reason = "触发安全审查 (提示词或画面违规)"
-                                runner_placeholder.error(f"❌ **生成失败！**\n\n**失败原因**: {reason}\n\n**详细信息**: {error_msg}")
-                                progress_bar.empty()
-                                break
+                    # ✨ 核心：提交后不等待，直接把任务放进右侧队列！
+                    add_history({
+                        "task_id": task_id,
+                        "timestamp": time.time(),
+                        "time_str": datetime.now().strftime("%H:%M:%S"),
+                        "prompt": current_prompt,
+                        "status": "running", # 初始状态：运行中
+                        "url": "",
+                        "reason": ""
+                    })
+                    
+                    st.success("🎉 任务已提交至云端！左侧已清空，您可以继续写下一个提示词了。请在右侧点击【🔄 刷新】查看进度。")
+                    time.sleep(1.5)
+                    st.rerun() # 瞬间刷新页面，解锁左侧供用户继续用
                 else:
-                    runner_placeholder.error(f"⚠️ 提交接口报错：{sub_res.get('msg', sub_res)}")
+                    st.error(f"⚠️ 提交接口报错：{sub_res.get('msg', sub_res)}")
             except Exception as e:
-                runner_placeholder.error(f"❌ 网络或系统异常：{e}")
+                st.error(f"❌ 网络或系统异常：{e}")
 
 # ==========================================
-# 6. 右侧画廊：历史记录面板
+# 6. 右侧任务队列与画廊 (折叠面板设计)
 # ==========================================
 with col_history:
-    st.markdown("### 🕰️ 生成历史")
-    # 【更新提示文案】
+    st.markdown("### 🗂️ 任务大厅")
     st.caption("提示：只能保存近1个小时图片。")
     
     history_list = clean_and_get_history()
     
+    # 刷新按钮逻辑：一键查询所有在排队的任务
+    if st.button("🔄 刷新全部生成进度", use_container_width=True):
+        with st.spinner("正在向云端同步状态..."):
+            updated = False
+            for item in history_list:
+                if item.get('status') == 'running':
+                    query_url = "https://grsai.dakka.com.cn/v1/draw/result"
+                    headers = {"Authorization": f"Bearer {GRSAI_API_KEY}", "Content-Type": "application/json"}
+                    try:
+                        q_res = requests.post(query_url, headers=headers, json={"id": item['task_id']}, verify=False).json()
+                        if q_res.get("code") == 0:
+                            new_status = q_res["data"]["status"]
+                            if new_status == "succeeded":
+                                item['status'] = 'succeeded'
+                                item['url'] = q_res["data"]["results"][0]["url"]
+                                updated = True
+                            elif new_status == "failed":
+                                item['status'] = 'failed'
+                                r = q_res["data"].get("failure_reason", "未知")
+                                if r in ["output_moderation", "input_moderation"]: r = "内容违规"
+                                item['reason'] = r
+                                updated = True
+                    except:
+                        pass
+            if updated:
+                save_history(history_list)
+                st.session_state.history = history_list
+        st.rerun()
+    
     if not history_list:
-        st.info("💡 暂无历史记录。")
+        st.info("💡 队列为空，快去左侧提交任务吧！")
     else:
+        # 倒序展示：最新的排在最上面
         for item in reversed(history_list):
-            with st.container():
-                st.markdown(f"**[{item['time_str']}]**")
-                short_prompt = item['prompt'][:20] + "..." if len(item['prompt']) > 20 else item['prompt']
-                st.caption(f"✍️ {short_prompt}")
-                st.markdown(f'<img src="{item["url"]}" style="width:100%; border-radius:8px; border:1px solid #ddd;">', unsafe_allow_html=True)
-                st.divider()
+            
+            # 根据状态决定图标
+            if item.get('status') == 'succeeded':
+                icon = "✅"
+            elif item.get('status') == 'failed':
+                icon = "❌"
+            else:
+                icon = "🏃‍♂️"
+                
+            short_prompt = item['prompt'][:10] + "..." if len(item['prompt']) > 10 else item['prompt']
+            label = f"{icon} [{item['time_str']}] {short_prompt}"
+            
+            # 使用折叠面板展示，点进去才能看图
+            with st.expander(label):
+                st.write(f"**描述:** {item['prompt']}")
+                
+                if item.get('status') == 'running':
+                    st.info("━🏃‍♂️━━━━━━━━🏁 冲刺中... \n\n👉 请点击上方【🔄 刷新进度】按钮获取最新状态")
+                
+                elif item.get('status') == 'failed':
+                    st.error(f"生成失败原因: {item.get('reason', '未知错误')}")
+                
+                elif item.get('status') == 'succeeded':
+                    # 100% 抛弃 st.image，用 HTML 彻底杜绝 TypeError 报错
+                    html_img = f'<img src="{item["url"]}" style="width:100%; border-radius:8px; border:1px solid #ddd; margin-bottom: 10px;">'
+                    st.markdown(html_img, unsafe_allow_html=True)
+                    
+                    # 直接提供带链接的高清下载文字（点击直接在浏览器新标签页打开原图）
+                    st.markdown(f"**[📥 点击这里在浏览器中打开并保存高清原图]({item['url']})**")
