@@ -12,7 +12,7 @@ from streamlit_drawable_canvas import st_canvas
 from supabase import create_client, Client
 
 # ==========================================
-# 0. 网页基础配置 (加入移动端初始缩放设定)
+# 0. 网页基础配置
 # ==========================================
 st.set_page_config(page_title="AI Pro Studio V6.2", page_icon="🚀", layout="wide", initial_sidebar_state="auto")
 
@@ -32,6 +32,8 @@ st.markdown("""
     .stButton > button:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
     /* 缩略图优化：强制预览图容器不要太大 */
     [data-testid="stHorizontalBlock"] > div { min-width: 80px !important; }
+    /* 登录框居中美化 */
+    .login-container { background-color: #f8f9fa; padding: 30px; border-radius: 15px; box-shadow: 0 4px 20px rgba(0,0,0,0.05); border: 1px solid #eee; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -61,7 +63,6 @@ def save_json(path, data):
         with open(path, "w", encoding="utf-8") as f: json.dump(data, f, ensure_ascii=False)
     except: pass
 
-# 🌟 从 Supabase 获取卡密完整信息
 def get_card_info(card_key):
     try:
         res = supabase.table("user_cards").select("*").eq("card_key", card_key).eq("is_active", True).execute()
@@ -78,35 +79,51 @@ def deduct_balance(card_key, amount):
     except: pass
 
 # ==========================================
-# 2. 身份验证 & 动态 API 路由
+# 2. 🌟 居中拦截式身份验证 🌟
 # ==========================================
-st.sidebar.markdown("### 🪪 身份验证")
-
 query_key = st.query_params.get("key", "")
-user_key_input = st.sidebar.text_input("🔑 请输入激活码", value=query_key, type="password", placeholder="输入激活码解锁...")
-user_key = user_key_input.strip() if user_key_input else ""
+card_info = get_card_info(query_key) if query_key else None
 
-if user_key:
-    st.query_params["key"] = user_key
-
-if not user_key:
-    st.sidebar.warning("👈 请输入有效的激活码以解锁功能。")
-    st.sidebar.info("💡 提示：成功输入后，收藏本页网址即可免密登录！")
-    st.stop()
-
-# 验证数据库信息
-card_info = get_card_info(user_key)
+# 如果没有通过验证（没有码，或者码不对），直接在主界面居中显示登录框
 if not card_info:
-    st.sidebar.error("❌ 激活码无效或已停用。")
-    st.stop()
+    st.markdown("<br><br><br>", unsafe_allow_html=True) # 往下推一点，视觉更居中
+    col1, col2, col3 = st.columns([1, 2, 1]) # PC端比例 1:2:1 居中，手机端会自动满宽
+    
+    with col2:
+        st.markdown("""
+            <div style="text-align: center; margin-bottom: 20px;">
+                <h1 style="font-size: 32px;">🚀 AI Pro Studio</h1>
+                <p style="color: #666; font-size: 16px;">请输入您的专属激活码以解锁创作台</p>
+            </div>
+        """, unsafe_allow_html=True)
+        
+        user_key_input = st.text_input("激活码", type="password", placeholder="🔑 在此输入激活码...", label_visibility="collapsed")
+        
+        if st.button("立即解锁进入系统 ✨", type="primary", use_container_width=True):
+            user_key = user_key_input.strip()
+            if not user_key:
+                st.error("❌ 请输入激活码！")
+            else:
+                check_info = get_card_info(user_key)
+                if check_info:
+                    st.query_params["key"] = user_key
+                    st.success("✅ 验证成功，正在加载创作环境...")
+                    time.sleep(0.8)
+                    st.rerun()
+                else:
+                    st.error("❌ 激活码无效或已停用，请重试。")
+    
+    # 🌟 核心拦截：如果没登录，代码运行到这里就彻底停止，不会渲染侧边栏和主界面
+    st.stop() 
 
+# --- 走到这里说明验证完全通过了 ---
+user_key = query_key
 current_balance = card_info['total_points'] - card_info['used_points']
 
-# 动态获取对应 API 密钥
 raw_api_name = card_info.get('api_secret_name') or "API_VIP888"
 clean_api_name = raw_api_name.strip("'").strip()
-
 GRSAI_API_KEY = st.secrets.get(clean_api_name, "")
+
 if not GRSAI_API_KEY:
     st.error(f"⚠️ 系统配置错误：未在 Secrets 中找到名为 `{clean_api_name}` 的密钥。")
     st.stop()
@@ -136,7 +153,7 @@ def pil_to_data_uri(img):
     return f"data:image/jpeg;base64,{base64.b64encode(buffered.getvalue()).decode()}"
 
 # ==========================================
-# 进度展示与结果处理 (核心升级)
+# 进度展示与结果处理
 # ==========================================
 def show_progress_dialog(task_id, prompt_text, active_user_key):
     with st.container():
@@ -160,23 +177,18 @@ def show_progress_dialog(task_id, prompt_text, active_user_key):
                 status = q_res["data"]["status"]
                 if status == "succeeded":
                     progress_bar.progress(100)
-                    
-                    # 🌟 升级 1：获取实际生成的图片数组，计算数量
                     results = q_res["data"]["results"]
                     num_images = len(results)
                     total_cost = num_images * IMAGE_COST
                     
-                    # 按照实际出图数量扣款
                     deduct_balance(active_user_key, total_cost)
                     status_text.success(f"✅ **生成成功！(共 {num_images} 张，已自动扣除 {num_images} 张额度)**")
-                    
-                    # 将所有生成的图片链接存入列表
                     urls = [img["url"] for img in results]
                     
                     for t in st.session_state.tasks:
                         if t['task_id'] == task_id:
                             t['status'] = 'succeeded'
-                            t['urls'] = urls # 更新任务数据，支持多图存储
+                            t['urls'] = urls
                             
                     save_json(TASKS_FILE, st.session_state.tasks)
                     time.sleep(1.5)
@@ -194,11 +206,17 @@ def show_progress_dialog(task_id, prompt_text, active_user_key):
         time.sleep(3)
 
 # ==========================================
-# 侧边栏及主界面
+# 侧边栏及主界面 (登录后才可见)
 # ==========================================
 max_images = int(current_balance // IMAGE_COST)
 
+# 侧边栏不再有输入框了，变成单纯的信息展示区
+st.sidebar.markdown(f'### 👤 用户中心\n当前用户: `{user_key}`')
 st.sidebar.markdown(f'剩余可制图: <span style="color:#00c2ff; font-weight:bold; font-size:22px;">{max_images}</span> 张', unsafe_allow_html=True)
+if st.sidebar.button("🚪 退出登录", use_container_width=True):
+    st.query_params.clear()
+    st.rerun()
+    
 st.sidebar.divider()
 menu = st.sidebar.radio("功能导航", ["✍️ 文生图", "🖼️ 图生图"])
 
@@ -219,7 +237,6 @@ with col_main:
         st.markdown("#### 🖼️ 图生图模式")
         uploaded_files = st.file_uploader("📤 上传参考图 (支持多图)", type=["png", "jpg"], accept_multiple_files=True)
         
-        # 精巧版图片预览墙 (分6列)
         if uploaded_files:
             st.markdown("<p style='font-size:14px; color:#666; margin-bottom:5px;'>👁️ 已选参考图预览：</p>", unsafe_allow_html=True)
             cols = st.columns(6) 
@@ -295,12 +312,9 @@ with col_history:
                         if st.button("🔍 查看进度", key=f"btn_{item['task_id']}", use_container_width=True):
                             show_progress_dialog(item['task_id'], item['prompt'], user_key)
                     elif item.get('status') == 'succeeded':
-                        # 兼容处理：旧数据可能只有 'url'，新数据有 'urls' 数组
                         img_urls = item.get('urls', [item.get('url')]) if item.get('urls') else [item.get('url')]
-                        
                         for idx, img_url in enumerate(img_urls):
                             if img_url:
-                                # 🌟 升级 2：丝滑的点击放大功能 (手写 HTML+CSS 支持悬浮动效与新标签页全屏)
                                 html_code = f'''
                                 <a href="{img_url}" target="_blank" title="点击放大查看原图">
                                     <img src="{img_url}" style="width:100%; border-radius:8px; cursor:zoom-in; transition: transform 0.2s; box-shadow: 0 2px 6px rgba(0,0,0,0.1); margin-bottom: 8px;" 
@@ -309,8 +323,6 @@ with col_history:
                                 </a>
                                 '''
                                 st.markdown(html_code, unsafe_allow_html=True)
-                                
-                        # 如果是多图，提供一个总的说明
                         if len(img_urls) > 1:
                             st.caption(f"👆 本次共产出 {len(img_urls)} 张图片，点击上方图片即可看大图。")
                         else:
