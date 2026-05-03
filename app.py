@@ -7,11 +7,12 @@ import base64
 from datetime import datetime
 import json
 import os
+from streamlit_drawable_canvas import st_canvas
 
 # ==========================================
 # 0. 网页基础配置
 # ==========================================
-st.set_page_config(page_title="AI Pro Workspace V4.2", page_icon="🎨", layout="wide")
+st.set_page_config(page_title="AI Pro Workspace V4.3", page_icon="🎨", layout="wide")
 
 # 注入自定义 CSS (仅保留必要的视觉样式)
 st.markdown("""
@@ -151,7 +152,7 @@ st.sidebar.divider()
 menu = st.sidebar.radio("功能导航", ["✍️ 文生图", "🖼️ 图生图", "🎨 专业画布工作台"])
 
 # ==========================================
-# 4. 页面 1 & 2: 经典的文生图 / 简化的图生图
+# 4. 页面 1 & 2: 经典的文生图 / 图生图互斥逻辑
 # ==========================================
 if menu in ["✍️ 文生图", "🖼️ 图生图"]:
     st.title("🚀 image-2 V2")
@@ -166,28 +167,38 @@ if menu in ["✍️ 文生图", "🖼️ 图生图"]:
             with c2: quality = st.selectbox("💎 图片质量", ["auto", "high", "medium", "low"])
             btn_submit = st.button("✨ 提交任务 (文生图)", type="primary")
             
-        else: # 图生图 (去除画板)
-            st.markdown("#### 🖼️ 图生图 (整图参考)")
+        else: # 图生图
+            st.markdown("#### 🖼️ 图生图 (支持涂鸦参考 / 整图参考)")
             
-            uploaded_files = st.file_uploader("📤 上传参考底图", type=["png", "jpg"], accept_multiple_files=False)
+            uploaded_files = st.file_uploader("📤 上传参考底图 (支持多张)", type=["png", "jpg"], accept_multiple_files=True)
+            canvas_result = None
             
+            # 【核心交互逻辑】：画布与上传图片互斥
             if not uploaded_files:
-                st.info("💡 请先上传参考底图。上传后即可输入提示词进行整图参考生成。")
-                prompt_txt = ""
-                btn_submit = False
+                st.info("💡 当前未上传图片：您可以在下方画板自由涂鸦草图作为参考。")
+                canvas_result = st_canvas(
+                    fill_color="rgba(255, 165, 0, 0.3)", stroke_width=3, stroke_color="#000000",
+                    background_color="#ffffff", height=400, drawing_mode="freedraw", key="canvas_img2img"
+                )
             else:
-                st.success("✅ 底图已锁定")
+                st.success("✅ 已上传图片参考，涂鸦画板自动隐藏。")
+                st.markdown("📎 **上传预览：**")
+                html_snippets = []
+                for idx, file in enumerate(uploaded_files):
+                    try:
+                        b64_str = base64.b64encode(file.getvalue()).decode("utf-8")
+                        html_img = f'''
+                        <div style="display: inline-block; margin-right: 15px; margin-bottom: 10px; text-align: center; background: #f0f2f6; padding: 8px; border-radius: 8px; border: 1px solid #ddd;">
+                            <div style="font-size: 13px; font-weight: bold; color: #444; margin-bottom: 6px;">图{idx+1}</div>
+                            <img src="data:image/jpeg;base64,{b64_str}" style="height: 80px; width: 80px; object-fit: cover; border-radius: 4px; border: 1px solid #ccc; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                        </div>
+                        '''
+                        html_snippets.append(html_img)
+                    except: pass
+                st.markdown("".join(html_snippets), unsafe_allow_html=True)
                 
-                # 预览底图
-                try:
-                    base_img = Image.open(io.BytesIO(uploaded_files.getvalue()))
-                    base_img.thumbnail((300, 300))
-                    st.image(base_img, caption="参考底图")
-                except:
-                    st.error("图片读取失败。")
-                
-                prompt_txt = st.text_area("修改指令或最终画面描述", height=80, key="prompt_img2img")
-                btn_submit = st.button("✨ 提交任务 (整图参考)", type="primary", key="btn_img2img")
+            prompt_txt = st.text_area("修改指令或最终画面描述", height=80, key="prompt_img2img")
+            btn_submit = st.button("✨ 提交任务 (图生图)", type="primary", key="btn_img2img")
 
         # 统一的 API 提交逻辑
         if btn_submit:
@@ -197,29 +208,27 @@ if menu in ["✍️ 文生图", "🖼️ 图生图"]:
                 payload = {"model": "gpt-image-2", "prompt": prompt_txt, "webHook": "-1", "shutProgress": True}
                 
                 if menu == "🖼️ 图生图":
-                    # 获取底图的 Base64 URI (注意：正式环境中应先上传图片获取URL)
-                    try:
-                        buffered_base = io.BytesIO()
-                        pil_base = Image.open(io.BytesIO(uploaded_files.getvalue()))
-                        if pil_base.mode != 'RGB': pil_base = pil_base.convert('RGB')
-                        pil_base.thumbnail((1024, 1024))
-                        pil_base.save(buffered_base, format="JPEG")
-                        base_uri = f"data:image/jpeg;base64,{base64.b64encode(buffered_base.getvalue()).decode()}"
-                    except:
-                        st.error("底图处理失败。")
-                        st.stop()
-
-                    st.markdown(f'''
-                        <hr style="border-color:#FF4B4B;">
-                        **🚨 正式 API 集成提示：**<br>
-                        当前的演示使用了 Base64 字符串。正式使用 API 时，请确保：<br>
-                        1. 先使用 API 提供的接口上传该图片，获取真实的图片 URL。<br>
-                        2. 将真实的 URL 放入 payload 的 `urls` 列表中。<br>
-                        <hr style="border-color:#FF4B4B;">
-                    ''', unsafe_allow_html=True)
+                    urls_list = []
                     
-                    # 仅发送底图，不发送遮罩，实现整图参考
-                    payload["urls"] = [base_uri] 
+                    if uploaded_files:
+                        # 逻辑 1：有上传图片时，打包所有上传的图片发送
+                        for file in uploaded_files:
+                            try:
+                                urls_list.append(pil_to_data_uri(Image.open(io.BytesIO(file.getvalue()))))
+                            except: pass
+                    else:
+                        # 逻辑 2：没上传图片时，打包画板上的涂鸦发送
+                        if canvas_result is not None and canvas_result.image_data is not None:
+                            try:
+                                canvas_pil = Image.fromarray(canvas_result.image_data.astype('uint8'), 'RGBA')
+                                urls_list.append(pil_to_data_uri(canvas_pil))
+                            except: pass
+                            
+                    if not urls_list:
+                        st.error("⚠️ 获取参考图失败，请检查上传文件或涂鸦板状态。")
+                        st.stop()
+                        
+                    payload["urls"] = urls_list
                     
                 else:
                     payload["aspectRatio"] = aspect_ratio
@@ -238,7 +247,7 @@ if menu in ["✍️ 文生图", "🖼️ 图生图"]:
 
     # 右侧任务队列大厅 
     with col_history:
-        st.markdown("### 🗂️ 已提交任务任务大厅")
+        st.markdown("### 🗂️ 已提交任务大厅")
         tasks_list = clean_and_get_tasks()
         if not tasks_list:
             st.info("💡 暂无记录。")
@@ -286,7 +295,7 @@ if menu in ["✍️ 文生图", "🖼️ 图生图"]:
                         st.divider()
 
 # ==========================================
-# 5. 页面 3: 🎨 专业画布工作台 (保持稳定结构)
+# 5. 页面 3: 🎨 专业画布工作台
 # ==========================================
 elif menu == "🎨 专业画布工作台":
     st.title("🎨 专业画布工作台")
