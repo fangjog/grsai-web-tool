@@ -15,12 +15,38 @@ from streamlit_drawable_canvas import st_canvas
 st.set_page_config(page_title="image-2 V2", page_icon="🎨", layout="wide")
 
 # ==========================================
-# 1. 安全密钥读取
+# 1. 安全密钥读取与映射
 # ==========================================
+# 激活码与 secrets.toml 密钥变量名的对应关系
+KEY_MAP = {
+    "vip888": "API_VIP",
+    "test1234": "API_TEST",
+    "123": "API_123"
+}
+
+# 激活码与初始赠送积分的映射关系
+KEY_POINTS = {
+    "vip888": 10000,
+    "test1234": 5000,
+    "123": 5000,
+    "free_trial": 600
+}
+
+# 读取激活码
+user_key = st.sidebar.text_input("🔑 请输入激活码/卡密", type="password")
+
+if not user_key or user_key not in KEY_MAP:
+    st.warning("👈 请在左侧输入有效的激活码以解锁系统。")
+    st.stop()
+
+st.sidebar.success("✅ 验证通过，欢迎使用！")
+
 try:
-    GRSAI_API_KEY = st.secrets["GRSAI_API_KEY"]
+    # 动态获取对应的 API Key
+    secret_name = KEY_MAP[user_key]
+    GRSAI_API_KEY = st.secrets[secret_name]
 except:
-    st.error("⚠️ 请先在 Streamlit 后台的 Settings -> Secrets 中配置 GRSAI_API_KEY")
+    st.error("⚠️ 未在 Secrets 中找到该激活码对应的 API Key 配置。")
     st.stop()
 
 # ==========================================
@@ -28,13 +54,6 @@ except:
 # ==========================================
 TASKS_FILE = "tasks_history.json"
 POINTS_FILE = "points_data.json"
-
-# 【新增功能】：定义激活码及其对应的积分
-VALID_KEY_POINTS = {
-    "vip888": 3000,
-    "test1234": 5000,
-    "free_trial": 600
-}
 
 def load_tasks():
     if os.path.exists(TASKS_FILE):
@@ -53,19 +72,18 @@ def save_tasks(task_list):
         pass
 
 def load_points():
-    """读取设定的积分余额和单张消耗"""
     if os.path.exists(POINTS_FILE):
         try:
             with open(POINTS_FILE, "r", encoding="utf-8") as f:
                 return json.load(f)
         except:
             pass
-    return {"total": 10000, "cost": 600}
+    return {"cost": 600}
 
-def save_points(total, cost):
+def save_points(cost):
     try:
         with open(POINTS_FILE, "w", encoding="utf-8") as f:
-            json.dump({"total": total, "cost": cost}, f, ensure_ascii=False)
+            json.dump({"cost": cost}, f, ensure_ascii=False)
     except:
         pass
 
@@ -167,16 +185,7 @@ def show_progress_dialog(task_id, prompt_text):
 # ==========================================
 st.title("🚀 image-2 V2")
 
-st.sidebar.markdown("### 身份验证")
-user_key = st.sidebar.text_input("🔑 请输入激活码/卡密", type="password")
-
-if user_key not in VALID_KEY_POINTS:
-    st.warning("👈 请在左侧输入有效的激活码以解锁系统。")
-    st.stop()
-st.sidebar.success("✅ 验证通过，欢迎使用！")
-
-# 【更新功能】：根据输入的激活码动态显示积分与可用张数
-current_points = VALID_KEY_POINTS.get(user_key, 600)
+current_points = KEY_POINTS.get(user_key, 600)
 saved_pts = load_points()
 cost_input = saved_pts["cost"]
 max_images = current_points / cost_input
@@ -261,7 +270,6 @@ with col_main:
                 "model": "gpt-image-2",
                 "prompt": current_prompt,
                 "webHook": "-1",
-                "shutProgress": True,
                 "shutProgress": True
             }
             
