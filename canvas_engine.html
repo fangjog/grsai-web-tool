@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>AI Pro Canvas Engine</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js"></script>
+    <style>
+        body { margin: 0; padding: 0; background-color: #f0f2f5; font-family: sans-serif; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+        /* 悬浮工具栏 */
+        .toolbar { background: white; padding: 15px 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); display: flex; gap: 15px; align-items: center; z-index: 10; border-bottom: 1px solid #eee; }
+        .btn { padding: 8px 16px; border: none; border-radius: 6px; background: #f8f9fa; color: #333; cursor: pointer; font-size: 14px; font-weight: bold; transition: all 0.2s; border: 1px solid #ddd; }
+        .btn:hover { background: #e2e6ea; border-color: #ccc; }
+        .btn-primary { background: #00c2ff; color: white; border: none; }
+        .btn-primary:hover { background: #009bdd; }
+        /* 画布包裹区 */
+        .canvas-container-wrapper { flex: 1; width: 100%; display: flex; justify-content: center; align-items: center; overflow: hidden; position: relative; }
+        /* Fabric JS 会自动生成 canvas 容器，这里做一点阴影美化 */
+        .canvas-container { box-shadow: 0 10px 30px rgba(0,0,0,0.1); border-radius: 8px; background-color: white; }
+    </style>
+</head>
+<body>
+
+    <div class="toolbar">
+        <span style="font-weight: 900; font-size: 16px; color: #333; margin-right: 20px;">🎨 Pro Canvas Engine</span>
+        <button class="btn" onclick="addText()">T 添加文本</button>
+        <button class="btn" onclick="addRect()">🟦 添加占位框</button>
+        <button class="btn" onclick="deleteSelected()" style="color: #FF4B4B;">🗑️ 删除选中</button>
+        <button class="btn" onclick="clearCanvas()">🔄 清空画布</button>
+    </div>
+
+    <div class="canvas-container-wrapper" id="wrapper">
+        <canvas id="c"></canvas>
+    </div>
+
+    <script>
+        // 1. 初始化无限画布
+        const wrapper = document.getElementById('wrapper');
+        const canvas = new fabric.Canvas('c', {
+            width: wrapper.clientWidth - 100,
+            height: wrapper.clientHeight - 60,
+            backgroundColor: '#ffffff',
+            preserveObjectStacking: true // 选中对象时保持原有层级
+        });
+
+        // 窗口缩放时自动适应
+        window.addEventListener('resize', () => {
+            canvas.setWidth(wrapper.clientWidth - 100);
+            canvas.setHeight(wrapper.clientHeight - 60);
+            canvas.renderAll();
+        });
+
+        // 定制选中时的边框和手柄样式 (完美还原你的设计图需求)
+        fabric.Object.prototype.set({
+            transparentCorners: false,
+            cornerColor: '#ffffff',
+            cornerStrokeColor: '#00c2ff',
+            borderColor: '#00c2ff',
+            cornerSize: 10,
+            padding: 5,
+            cornerStyle: 'circle',
+            borderDashArray: [4, 4]
+        });
+
+        // 2. 核心功能：添加文本
+        function addText() {
+            const text = new fabric.IText('双击编辑文本', {
+                left: canvas.width / 2 - 50,
+                top: canvas.height / 2 - 20,
+                fontFamily: 'sans-serif',
+                fill: '#333333',
+                fontSize: 24
+            });
+            canvas.add(text);
+            canvas.setActiveObject(text);
+        }
+
+        // 3. 核心功能：添加矩形占位
+        function addRect() {
+            const rect = new fabric.Rect({
+                left: canvas.width / 2 - 100,
+                top: canvas.height / 2 - 100,
+                fill: 'rgba(0, 194, 255, 0.2)',
+                stroke: '#00c2ff',
+                strokeWidth: 2,
+                width: 200,
+                height: 200,
+                rx: 8,
+                ry: 8
+            });
+            canvas.add(rect);
+            canvas.setActiveObject(rect);
+        }
+
+        // 4. 删除选中元素
+        function deleteSelected() {
+            const activeObjects = canvas.getActiveObjects();
+            if (activeObjects.length) {
+                canvas.discardActiveObject();
+                activeObjects.forEach(function(object) {
+                    canvas.remove(object);
+                });
+            }
+        }
+
+        // 5. 清空画布
+        function clearCanvas() {
+            if(confirm("确定要清空画板吗？")) {
+                canvas.clear();
+                canvas.backgroundColor = '#ffffff';
+                canvas.renderAll();
+            }
+        }
+
+        // 6. 快捷键支持 (Delete / Backspace 删除选中)
+        window.addEventListener('keydown', function(e) {
+            if (e.key === 'Delete' || e.key === 'Backspace') {
+                // 确保不是在编辑文本时按下的删除
+                if (!canvas.getActiveObject() || canvas.getActiveObject().isEditing) return;
+                deleteSelected();
+            }
+        });
+    </script>
+</body>
+</html>
