@@ -97,10 +97,9 @@ with col_main:
             cols = st.columns(min(len(uploaded_files)-1, 5))
             for idx, file in enumerate(uploaded_files[1:]):
                 with cols[idx % 5]:
-                    # 【核心修复区】：显式读取图片并重置指针，杜绝 TypeError
-                    preview_img = Image.open(file)
-                    st.image(preview_img, use_container_width=True)
-                    file.seek(0) # 重置文件流，保证后续 API 提交能正常读取
+                    # 【终极修复区】：直接调用 getvalue() 获取底层纯二进制字节流
+                    # 这样不涉及任何文件指针和懒加载问题，100% 不会报错！
+                    st.image(file.getvalue(), use_container_width=True)
 
         st.caption("在下方区域使用鼠标绘制内容，它将作为主垫图参考：")
         canvas_result = st_canvas(
