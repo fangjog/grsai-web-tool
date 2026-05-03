@@ -14,7 +14,7 @@ from supabase import create_client, Client
 # ==========================================
 # 0. 网页基础配置 (加入移动端初始缩放设定)
 # ==========================================
-st.set_page_config(page_title="AI Pro Studio V6.1", page_icon="🚀", layout="wide", initial_sidebar_state="auto")
+st.set_page_config(page_title="AI Pro Studio V6.2", page_icon="🚀", layout="wide", initial_sidebar_state="auto")
 
 st.markdown("""
 <style>
@@ -102,7 +102,7 @@ if not card_info:
 
 current_balance = card_info['total_points'] - card_info['used_points']
 
-# 🌟 动态获取对应 API 密钥 (自动清理可能误填的单引号和空格)
+# 动态获取对应 API 密钥
 raw_api_name = card_info.get('api_secret_name') or "API_VIP888"
 clean_api_name = raw_api_name.strip("'").strip()
 
@@ -136,7 +136,7 @@ def pil_to_data_uri(img):
     return f"data:image/jpeg;base64,{base64.b64encode(buffered.getvalue()).decode()}"
 
 # ==========================================
-# 进度展示 (移除实验性弹窗，采用稳定内嵌版)
+# 进度展示与结果处理 (核心升级)
 # ==========================================
 def show_progress_dialog(task_id, prompt_text, active_user_key):
     with st.container():
@@ -160,13 +160,24 @@ def show_progress_dialog(task_id, prompt_text, active_user_key):
                 status = q_res["data"]["status"]
                 if status == "succeeded":
                     progress_bar.progress(100)
-                    img_url = q_res["data"]["results"][0]["url"]
-                    deduct_balance(active_user_key, IMAGE_COST) # 真实扣款
-                    status_text.success("✅ **生成成功！(已扣除 1 张额度)**")
+                    
+                    # 🌟 升级 1：获取实际生成的图片数组，计算数量
+                    results = q_res["data"]["results"]
+                    num_images = len(results)
+                    total_cost = num_images * IMAGE_COST
+                    
+                    # 按照实际出图数量扣款
+                    deduct_balance(active_user_key, total_cost)
+                    status_text.success(f"✅ **生成成功！(共 {num_images} 张，已自动扣除 {num_images} 张额度)**")
+                    
+                    # 将所有生成的图片链接存入列表
+                    urls = [img["url"] for img in results]
+                    
                     for t in st.session_state.tasks:
                         if t['task_id'] == task_id:
                             t['status'] = 'succeeded'
-                            t['url'] = img_url
+                            t['urls'] = urls # 更新任务数据，支持多图存储
+                            
                     save_json(TASKS_FILE, st.session_state.tasks)
                     time.sleep(1.5)
                     st.rerun()
@@ -263,7 +274,7 @@ with col_main:
             try:
                 sub_res = requests.post("https://grsai.dakka.com.cn/v1/draw/completions", headers=headers, json=payload, verify=False).json()
                 if sub_res.get("code") == 0:
-                    add_task({"task_id": sub_res["data"]["id"], "timestamp": time.time(), "time_str": datetime.now().strftime("%H:%M"), "prompt": prompt_txt, "status": "running", "url": ""})
+                    add_task({"task_id": sub_res["data"]["id"], "timestamp": time.time(), "time_str": datetime.now().strftime("%H:%M"), "prompt": prompt_txt, "status": "running", "urls": []})
                     st.success("🎉 任务已提交云端！")
                     time.sleep(1)
                     st.rerun()
@@ -284,8 +295,27 @@ with col_history:
                         if st.button("🔍 查看进度", key=f"btn_{item['task_id']}", use_container_width=True):
                             show_progress_dialog(item['task_id'], item['prompt'], user_key)
                     elif item.get('status') == 'succeeded':
-                        st.image(item['url'])
-                        st.markdown(f"**[📥 点击下载原图]({item['url']})**")
+                        # 兼容处理：旧数据可能只有 'url'，新数据有 'urls' 数组
+                        img_urls = item.get('urls', [item.get('url')]) if item.get('urls') else [item.get('url')]
+                        
+                        for idx, img_url in enumerate(img_urls):
+                            if img_url:
+                                # 🌟 升级 2：丝滑的点击放大功能 (手写 HTML+CSS 支持悬浮动效与新标签页全屏)
+                                html_code = f'''
+                                <a href="{img_url}" target="_blank" title="点击放大查看原图">
+                                    <img src="{img_url}" style="width:100%; border-radius:8px; cursor:zoom-in; transition: transform 0.2s; box-shadow: 0 2px 6px rgba(0,0,0,0.1); margin-bottom: 8px;" 
+                                    onmouseover="this.style.transform='scale(1.02)'" 
+                                    onmouseout="this.style.transform='scale(1)'">
+                                </a>
+                                '''
+                                st.markdown(html_code, unsafe_allow_html=True)
+                                
+                        # 如果是多图，提供一个总的说明
+                        if len(img_urls) > 1:
+                            st.caption(f"👆 本次共产出 {len(img_urls)} 张图片，点击上方图片即可看大图。")
+                        else:
+                            st.markdown(f"**[📥 下载原图]({img_urls[0]})**")
+                            
                     elif item.get('status') == 'failed':
                         st.error("❌ 生成失败")
                     st.divider()
