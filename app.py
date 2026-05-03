@@ -89,7 +89,6 @@ with col_main:
         canvas_bg = None
         if uploaded_files:
             try:
-                # 【核心稳定优化】：使用 io.BytesIO 安全读取，绝对不破坏原文件的指针！
                 canvas_bg = Image.open(io.BytesIO(uploaded_files[0].getvalue()))
                 canvas_bg.thumbnail((1024, 1024))
             except Exception as e:
@@ -100,7 +99,6 @@ with col_main:
             cols = st.columns(min(len(uploaded_files)-1, 5))
             for idx, file in enumerate(uploaded_files[1:]):
                 with cols[idx % 5]:
-                    # 【终极解决方案】：放弃 st.image，用纯原生 HTML 强制渲染，100% 解决各种报错！
                     try:
                         bytes_data = file.getvalue()
                         b64_str = base64.b64encode(bytes_data).decode("utf-8")
@@ -137,7 +135,6 @@ with col_main:
         else:
             status_text = st.empty()
             progress_bar = st.progress(0)
-            status_text.info("📡 正在封装数据提交给服务器...")
             
             payload = {
                 "model": "gpt-image-2",
@@ -148,7 +145,6 @@ with col_main:
             
             if mode == "img2img":
                 urls_list = []
-                
                 if canvas_result.image_data is not None:
                     canvas_pil = Image.fromarray(canvas_result.image_data.astype('uint8'), 'RGBA')
                     urls_list.append(pil_to_data_uri(canvas_pil))
@@ -156,12 +152,10 @@ with col_main:
                 if uploaded_files and len(uploaded_files) > 1:
                     for file in uploaded_files[1:]:
                         try:
-                            # 同样使用 io.BytesIO() 安全读取
                             img_extra = Image.open(io.BytesIO(file.getvalue()))
                             urls_list.append(pil_to_data_uri(img_extra))
                         except Exception as e:
-                            st.error(f"附加图处理失败: {e}")
-                        
+                            pass
                 payload["urls"] = urls_list 
             else:
                 payload["aspectRatio"] = aspect_ratio_txt
@@ -178,46 +172,54 @@ with col_main:
                 
                 if sub_res.get("code") == 0:
                     task_id = sub_res["data"]["id"]
-                    status_text.warning("⏳ 任务提交成功，云端作画中...")
-                    progress_bar.progress(20)
                     
-                    query_url = "https://grsai.dakka.com.cn/v1/draw/result"
-                    
-                    for i in range(40):
-                        time.sleep(3)
-                        progress_bar.progress(min(20 + i*2, 95))
+                    # 【核心优化】：加入动画 Spinner 和更友好的进度条
+                    with st.spinner("🎨 正在努力生成中，请耐心等待..."):
+                        query_url = "https://grsai.dakka.com.cn/v1/draw/result"
                         
-                        q_res = requests.post(query_url, headers=headers, json={"id": task_id}, verify=False).json()
-                        
-                        if q_res.get("code") == 0:
-                            status = q_res["data"]["status"]
+                        for i in range(40):
+                            time.sleep(3)
+                            progress_bar.progress(min(20 + i*2, 95))
                             
-                            if status == "succeeded":
-                                img_url = q_res["data"]["results"][0]["url"]
-                                status_text.success("✅ 图片生成完毕！")
-                                progress_bar.progress(100)
+                            q_res = requests.post(query_url, headers=headers, json={"id": task_id}, verify=False).json()
+                            
+                            if q_res.get("code") == 0:
+                                status = q_res["data"]["status"]
                                 
-                                img_data = requests.get(img_url, verify=False).content
-                                final_image = Image.open(io.BytesIO(img_data))
-                                st.image(final_image, caption="AI 生成结果")
-                                st.download_button(label="💾 下载高清原图", data=img_data, file_name=f"AI_Draw_{task_id}.jpg", mime="image/jpeg")
-                                
-                                st.session_state.history.append({
-                                    "timestamp": time.time(),
-                                    "time_str": datetime.now().strftime("%H:%M:%S"),
-                                    "prompt": current_prompt,
-                                    "url": img_url
-                                })
-                                break
-                            elif status == "failed":
-                                reason = q_res["data"].get("failure_reason", "未知")
-                                error_msg = q_res["data"].get("error", "")
-                                status_text.error(f"❌ 生成失败！原因: {reason} - {error_msg}")
-                                break
+                                if status == "succeeded":
+                                    img_url = q_res["data"]["results"][0]["url"]
+                                    status_text.success("✅ 图片生成完毕！")
+                                    progress_bar.progress(100)
+                                    
+                                    img_data = requests.get(img_url, verify=False).content
+                                    final_image = Image.open(io.BytesIO(img_data))
+                                    st.image(final_image, caption="AI 生成结果")
+                                    st.download_button(label="💾 下载高清原图", data=img_data, file_name=f"AI_Draw_{task_id}.jpg", mime="image/jpeg")
+                                    
+                                    st.session_state.history.append({
+                                        "timestamp": time.time(),
+                                        "time_str": datetime.now().strftime("%H:%M:%S"),
+                                        "prompt": current_prompt,
+                                        "url": img_url
+                                    })
+                                    break
+                                elif status == "failed":
+                                    # 【核心优化】：详细解析并展示失败原因
+                                    reason = q_res["data"].get("failure_reason", "未知错误")
+                                    error_msg = q_res["data"].get("error", "服务器未返回具体细节")
+                                    
+                                    # 针对常见的违规提示做中文翻译
+                                    if reason == "output_moderation" or reason == "input_moderation":
+                                        reason = "触发安全审查 (提示词或画面违规)"
+                                        
+                                    st.error(f"❌ **生成失败！**\n\n**失败原因**: {reason}\n\n**详细信息**: {error_msg}")
+                                    progress_bar.empty() # 清除进度条
+                                    break
+                    
                 else:
-                    status_text.error(f"⚠️ 提交接口报错：{sub_res.get('msg', sub_res)}")
+                    st.error(f"⚠️ 提交接口报错：{sub_res.get('msg', sub_res)}")
             except Exception as e:
-                status_text.error(f"❌ 网络或系统异常：{e}")
+                st.error(f"❌ 网络或系统异常：{e}")
 
 # ==========================================
 # 6. 右侧画廊：历史记录面板
@@ -236,5 +238,6 @@ with col_history:
                 st.markdown(f"**[{item['time_str']}]**")
                 short_prompt = item['prompt'][:20] + "..." if len(item['prompt']) > 20 else item['prompt']
                 st.caption(f"✍️ {short_prompt}")
-                st.image(item['url'], use_container_width=True)
+                # 【终极修复】：历史记录同样彻底抛弃 st.image，换成 HTML 渲染防止报错！
+                st.markdown(f'<img src="{item["url"]}" style="width:100%; border-radius:8px; border:1px solid #ddd;">', unsafe_allow_html=True)
                 st.divider()
