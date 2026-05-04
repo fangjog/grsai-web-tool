@@ -14,7 +14,7 @@ from supabase import create_client, Client
 # ==========================================
 # 0. 网页基础配置
 # ==========================================
-st.set_page_config(page_title="AI Pro Studio V6.11", page_icon="🚀", layout="wide", initial_sidebar_state="auto")
+st.set_page_config(page_title="AI Pro Studio V6.12", page_icon="🚀", layout="wide", initial_sidebar_state="auto")
 
 st.markdown("""
 <style>
@@ -60,7 +60,10 @@ MODEL_COSTS = {
 
 TASKS_FILE = "tasks_history.json"
 
-def load_json(path, default={default={}}):
+# 🌟 修复 V6.11 中的语法手抖错误 🌟
+def load_json(path, default=None):
+    if default is None:
+        default = {}
     if os.path.exists(path):
         try:
             with open(path, "r", encoding="utf-8") as f: return json.load(f)
