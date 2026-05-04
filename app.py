@@ -5,17 +5,17 @@ import time
 from PIL import Image
 import io
 import base64
-from datetime import datetime, timedelta
+from datetime import datetime
 import json
 import os
 from streamlit_drawable_canvas import st_canvas
 from supabase import create_client, Client
-import pytz # 请确保 requirements.txt 里有 pytz
+import pytz 
 
 # ==========================================
 # 0. 网页基础配置与全局 CSS
 # ==========================================
-st.set_page_config(page_title="AI Pro Studio V6.27", page_icon="🚀", layout="wide", initial_sidebar_state="auto")
+st.set_page_config(page_title="AI Pro Studio V6.30", page_icon="🚀", layout="wide", initial_sidebar_state="auto")
 
 st.markdown("""
 <style>
@@ -65,22 +65,26 @@ except Exception as e:
     st.stop()
 
 MODEL_COSTS = {"gpt-image-2": 600, "gpt-image-2-vip": 900}
-TASKS_FILE = "tasks_history.json"
 ratio_opts = ["auto", "1:1", "3:2", "2:3", "16:9", "9:16", "5:4", "4:5", "4:3", "3:4", "21:9", "9:21", "1:3", "3:1", "2:1", "1:2", "自定义像素"]
 quality_opts = ["auto", "high", "medium", "low"]
+BJ_TZ = pytz.timezone('Asia/Shanghai')
 
-def load_json(path, default=None):
-    if default is None: default = {}
-    if os.path.exists(path):
-        try:
-            with open(path, "r", encoding="utf-8") as f: return json.load(f)
-        except: return default
-    return default
-
-def save_json(path, data):
+# 🌟 核心：从 Supabase 获取云端历史 
+def fetch_tasks_from_db(card_key):
     try:
-        with open(path, "w", encoding="utf-8") as f: json.dump(data, f, ensure_ascii=False)
-    except: pass
+        res = supabase.table("tasks").select("*").eq("card_key", card_key).order("timestamp", desc=True).limit(10).execute()
+        return res.data if res.data else []
+    except Exception as e: 
+        st.sidebar.error(f"⚠️ 拉取记录失败: {e}")
+        return []
+
+# 🌟 核心：同步任务状态到云端
+def sync_task_to_db(task_data, card_key):
+    try:
+        task_data["card_key"] = card_key
+        supabase.table("tasks").upsert(task_data, on_conflict="task_id").execute()
+    except Exception as e: 
+        raise Exception(f"云端同步错误: {e}")
 
 def get_card_info(card_key):
     try:
@@ -97,6 +101,23 @@ def deduct_balance(card_key, amount):
             new_final = res.data[0]['final_points'] - amount
             supabase.table("user_cards").update({"used_points": new_used, "final_points": new_final}).eq("card_key", card_key).execute()
     except: pass
+
+def pil_to_data_uri(img):
+    buffered = io.BytesIO()
+    if img.mode != 'RGB': img = img.convert('RGB')
+    img.thumbnail((1024, 1024)) 
+    img.save(buffered, format="JPEG")
+    return f"data:image/jpeg;base64,{base64.b64encode(buffered.getvalue()).decode()}"
+
+def parse_api_response(text):
+    if not text: return None
+    try: return json.loads(text)
+    except:
+        for line in text.split('\n'):
+            if line.strip().startswith('data:'):
+                try: return json.loads(line.strip()[5:])
+                except: pass
+    return None
 
 # ==========================================
 # 2. 身份验证
@@ -126,31 +147,7 @@ clean_api_name = (card_info.get('api_secret_name') or "API_VIP888").strip("'").s
 GRSAI_API_KEY = st.secrets.get(clean_api_name, "")
 
 # ==========================================
-# 3. 任务队列
-# ==========================================
-all_history = load_json(TASKS_FILE, default={})
-if isinstance(all_history, list): all_history = {}
-if 'tasks' not in st.session_state: st.session_state.tasks = all_history.get(user_key, [])
-
-def clean_and_get_tasks(active_key):
-    curr_time = time.time()
-    valid = [t for t in st.session_state.tasks if (curr_time - t['timestamp']) < 3600]
-    st.session_state.tasks = valid[-10:]
-    global_history = load_json(TASKS_FILE, default={})
-    if isinstance(global_history, list): global_history = {}
-    global_history[active_key] = st.session_state.tasks
-    save_json(TASKS_FILE, global_history)
-    return st.session_state.tasks
-
-def pil_to_data_uri(img):
-    buffered = io.BytesIO()
-    if img.mode != 'RGB': img = img.convert('RGB')
-    img.thumbnail((1024, 1024)) 
-    img.save(buffered, format="JPEG")
-    return f"data:image/jpeg;base64,{base64.b64encode(buffered.getvalue()).decode()}"
-
-# ==========================================
-# 自动轮询 (修复代码块输出 & 中国时区同步)
+# 3. 自动轮询 
 # ==========================================
 def auto_poll_task(task_id, active_user_key, model_used, start_time):
     placeholder = st.empty()
@@ -227,7 +224,7 @@ col_main, col_history = st.columns([7, 3])
 with col_main:
     selected_model = st.selectbox("🤖 模型选择", ["gpt-image-2", "gpt-image-2-vip"])
     
-    # 🌟 统一放大模态框容器（放在主界面底部，防止抖动）
+    # 🌟 统一放大模态框容器
     upload_zoom_container = st.empty()
     
     if menu == "✍️ 文生图":
@@ -259,11 +256,6 @@ with col_main:
                             <img src="{data_uri}">
                         </label>
                     ''', unsafe_allow_html=True)
-                
-            # 渲染缩略图预览
-            st.markdown(f'<div style="margin-top:10px;">{preview_html}</div>', unsafe_allow_html=True)
-            # 渲染隐藏的模态框代码
-            upload_zoom_container.markdown(zoom_html_modals, unsafe_allow_html=True)
         
         canvas_result = None
         if not uploaded_files:
@@ -300,11 +292,11 @@ with col_main:
                     
                     # 3. 处理图生图图片 (加固版)
                     if menu == "🖼️ 图生图":
-                        if not files: 
+                        if not uploaded_files: 
                             st.error("⚠️ 请先上传参考图"); st.stop()
                         try:
                             # 显式转换，防止 Image.open 报错
-                            payload["urls"] = [pil_to_data_uri(Image.open(io.BytesIO(f.getvalue()))) for f in files]
+                            payload["urls"] = [pil_to_data_uri(Image.open(io.BytesIO(f.getvalue()))) for f in uploaded_files]
                         except Exception as img_err:
                             st.error(f"❌ 图片处理失败: {str(img_err)}"); st.stop()
                     
@@ -350,3 +342,32 @@ with col_main:
                         
                 except Exception as global_err:
                     st.error(f"💥 提交发生致命错误: {str(global_err)}")
+
+with col_history:
+    st.markdown("### 🗂️ 创作记录")
+    tasks_list = fetch_tasks_from_db(user_key)
+    
+    if not tasks_list:
+        st.info("暂无记录")
+    else:
+        total_len = len(tasks_list)
+        with st.container(height=700):
+            for idx, item in enumerate(tasks_list):
+                display_idx = total_len - idx
+                m_badge = "👑 VIP" if item.get('model') == 'gpt-image-2-vip' else "普"
+                st.markdown(f"**[{display_idx}]** **[{item['time_str']}]** `{m_badge}` 💡 {item['prompt'][:10]}...")
+                with st.expander("📋 完整提示词"): st.code(item['prompt'], language="text")
+                
+                if item['status'] == 'running':
+                    auto_poll_task(item['task_id'], user_key, item.get('model','gpt-image-2'), item['timestamp'])
+                elif item['status'] == 'succeeded':
+                    urls = item.get('urls', [])
+                    imgs_html = ""
+                    for i, url in enumerate(urls):
+                        modal_id = f"cb_{str(item['task_id']).replace('-','')}_{i}"
+                        # 🌟 使用Checkbox Hack实现历史图片丝滑放大
+                        imgs_html += f'<label for="{modal_id}"><img src="{url}" class="result-thumb"></label><input type="checkbox" id="{modal_id}" class="modal-checkbox"><label for="{modal_id}" class="img-modal-overlay"><img src="{url}"></label>'
+                    st.markdown(imgs_html, unsafe_allow_html=True)
+                elif item['status'] == 'failed': 
+                    st.error(f"❌ 触发安全审查")
+                st.divider()
