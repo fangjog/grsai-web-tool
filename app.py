@@ -15,7 +15,7 @@ import pytz
 # ==========================================
 # 0. 网页基础配置与全局 CSS
 # ==========================================
-st.set_page_config(page_title="AI Pro Studio V6.37", page_icon="🚀", layout="wide", initial_sidebar_state="auto")
+st.set_page_config(page_title="AI Pro Studio V6.38", page_icon="🚀", layout="wide", initial_sidebar_state="auto")
 
 st.markdown("""
 <style>
@@ -56,7 +56,7 @@ st.markdown("""
         border: 1px solid #444;
     }
     
-    /* === 纯 CSS Tab 切换黑科技 (免疫 Streamlit 屏蔽 JS) === */
+    /* === 纯 CSS Tab 切换黑科技 === */
     .tab-radio { display: none; }
     .view-swipe, .view-side { display: none; }
     
@@ -336,18 +336,16 @@ with col_main:
                 uploaded_b64_urls.append(data_uri) 
                 zoom_id = f"zm_up_{i}" 
                 with p_cols[i % 6]:
-                    # 🌟 修复：预览图弹窗也改为纯净DIV，防止黑屏
-                    st.markdown(f'''
-                        <label for="{zoom_id}">
-                            <img src="{data_uri}" class="result-thumb" style="width:100%; border-radius:8px; cursor:zoom-in;">
-                            <div style="text-align:center; font-size:11px; color:#aaa; margin-top:2px;">图 {i+1}</div>
-                        </label>
-                        <input type="checkbox" id="{zoom_id}" class="modal-checkbox">
-                        <div class="img-modal-overlay">
-                            <label for="{zoom_id}" class="modal-close-bg"></label>
-                            <div class="single-img-container"><img src="{data_uri}"></div>
-                        </div>
-                    ''', unsafe_allow_html=True)
+                    # 🌟 修复：无缝衔接防解析打断
+                    html_str = (
+                        f'<label for="{zoom_id}"><img src="{data_uri}" class="result-thumb" style="width:100%; border-radius:8px; cursor:zoom-in;"><div style="text-align:center; font-size:11px; color:#aaa; margin-top:2px;">图 {i+1}</div></label>'
+                        f'<input type="checkbox" id="{zoom_id}" class="modal-checkbox">'
+                        f'<div class="img-modal-overlay">'
+                        f'<label for="{zoom_id}" class="modal-close-bg"></label>'
+                        f'<div class="single-img-container"><img src="{data_uri}"></div>'
+                        f'</div>'
+                    )
+                    st.markdown(html_str, unsafe_allow_html=True)
         
         canvas_result = None
         if not uploaded_files: canvas_result = st_canvas(fill_color="rgba(255,165,0,0.3)", height=300, key="cvs")
@@ -444,63 +442,52 @@ with col_history:
                     for i, url in enumerate(urls):
                         modal_id = f"cb_{str(item['task_id']).replace('-','')}_{i}"
                         
-                        # 🌟 修复：渲染高级对比控制台 (使用纯净层级和纯 CSS TABS 黑科技)
+                        # 🌟 修复：去除换行符防解析，完美呈现滑动模态框
                         if src_urls and i < len(src_urls):
                             before_url = src_urls[i]
                             after_url = url
                             
-                            imgs_html += f'''
-                                <label for="{modal_id}"><img src="{after_url}" class="result-thumb"></label>
-                                <input type="checkbox" id="{modal_id}" class="modal-checkbox">
-                                <div class="img-modal-overlay">
-                                    <label for="{modal_id}" class="modal-close-bg"></label>
-                                    
-                                    <div class="compare-wrapper">
-                                        <input type="radio" name="tab_{modal_id}" id="swipe_{modal_id}" class="tab-radio swipe-radio" checked>
-                                        <input type="radio" name="tab_{modal_id}" id="side_{modal_id}" class="tab-radio side-radio">
-                                        
-                                        <div class="compare-header">
-                                            <span style="color:#fff; font-size:16px; font-weight:bold;">🖼️ 图像优化对比</span>
-                                            <div>
-                                                <label for="swipe_{modal_id}" class="mode-btn btn-swipe">🖱️ 划动对比</label>
-                                                <label for="side_{modal_id}" class="mode-btn btn-side">🪟 左右对比</label>
-                                                <label for="{modal_id}" class="close-btn">&times;</label>
-                                            </div>
-                                        </div>
-                                        
-                                        <div class="view-swipe">
-                                            <img src="{before_url}" class="img-base">
-                                            <div class="badge-before">原图 (Before)</div>
-                                            
-                                            <img src="{after_url}" class="img-clip" id="clip_{modal_id}">
-                                            <div class="badge-after">成品 (After)</div>
-                                            
-                                            <input type="range" min="0" max="100" value="50" class="compare-slider" oninput="document.getElementById('clip_{modal_id}').style.clipPath = 'polygon(' + this.value + '% 0, 100% 0, 100% 100%, ' + this.value + '% 100%)'">
-                                        </div>
-                                        
-                                        <div class="view-side">
-                                            <div class="side-panel">
-                                                <img src="{before_url}">
-                                                <div class="side-label">原图 (Before)</div>
-                                            </div>
-                                            <div class="side-panel">
-                                                <img src="{after_url}">
-                                                <div class="side-label">成品 (After)</div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            '''
+                            html_str = (
+                                f'<label for="{modal_id}"><img src="{after_url}" class="result-thumb"></label>'
+                                f'<input type="checkbox" id="{modal_id}" class="modal-checkbox">'
+                                f'<div class="img-modal-overlay">'
+                                    f'<label for="{modal_id}" class="modal-close-bg"></label>'
+                                    f'<div class="compare-wrapper">'
+                                        f'<input type="radio" name="tab_{modal_id}" id="swipe_{modal_id}" class="tab-radio swipe-radio" checked>'
+                                        f'<input type="radio" name="tab_{modal_id}" id="side_{modal_id}" class="tab-radio side-radio">'
+                                        f'<div class="compare-header">'
+                                            f'<span style="color:#fff; font-size:16px; font-weight:bold;">🖼️ 图像优化对比</span>'
+                                            f'<div>'
+                                                f'<label for="swipe_{modal_id}" class="mode-btn btn-swipe">🖱️ 划动对比</label>'
+                                                f'<label for="side_{modal_id}" class="mode-btn btn-side">🪟 左右对比</label>'
+                                                f'<label for="{modal_id}" class="close-btn">&times;</label>'
+                                            f'</div>'
+                                        f'</div>'
+                                        f'<div class="view-swipe">'
+                                            f'<img src="{before_url}" class="img-base">'
+                                            f'<div class="badge-before">原图 (Before)</div>'
+                                            f'<img src="{after_url}" class="img-clip" id="clip_{modal_id}">'
+                                            f'<div class="badge-after">成品 (After)</div>'
+                                            f'<input type="range" min="0" max="100" value="50" class="compare-slider" oninput="document.getElementById(\'clip_{modal_id}\').style.clipPath = \'polygon(\' + this.value + \'% 0, 100% 0, 100% 100%, \' + this.value + \'% 100%)\'">'
+                                        f'</div>'
+                                        f'<div class="view-side">'
+                                            f'<div class="side-panel"><img src="{before_url}"><div class="side-label">原图 (Before)</div></div>'
+                                            f'<div class="side-panel"><img src="{after_url}"><div class="side-label">成品 (After)</div></div>'
+                                        f'</div>'
+                                    f'</div>'
+                                f'</div>'
+                            )
+                            imgs_html += html_str
                         else:
-                            # 🌟 修复：普通单图放大模式也改为纯净DIV，防止黑屏
-                            imgs_html += f'''
-                                <label for="{modal_id}"><img src="{url}" class="result-thumb"></label>
-                                <input type="checkbox" id="{modal_id}" class="modal-checkbox">
-                                <div class="img-modal-overlay">
-                                    <label for="{modal_id}" class="modal-close-bg"></label>
-                                    <div class="single-img-container"><img src="{url}"></div>
-                                </div>
-                            '''
+                            html_str = (
+                                f'<label for="{modal_id}"><img src="{url}" class="result-thumb"></label>'
+                                f'<input type="checkbox" id="{modal_id}" class="modal-checkbox">'
+                                f'<div class="img-modal-overlay">'
+                                    f'<label for="{modal_id}" class="modal-close-bg"></label>'
+                                    f'<div class="single-img-container"><img src="{url}"></div>'
+                                f'</div>'
+                            )
+                            imgs_html += html_str
                             
                     st.markdown(imgs_html, unsafe_allow_html=True)
                 elif item['status'] == 'failed': st.error(f"❌ 失败/未通过审查")
