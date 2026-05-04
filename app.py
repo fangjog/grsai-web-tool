@@ -47,7 +47,9 @@ st.markdown("""
 # 1. 数据库逻辑
 # ==========================================
 try:
-    supabase: Client = create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
+    SUPABASE_URL = st.secrets["SUPABASE_URL"]
+    SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
+    supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 except:
     st.error("❌ 数据库连接失败"); st.stop()
 
