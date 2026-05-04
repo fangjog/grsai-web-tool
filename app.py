@@ -255,7 +255,7 @@ menu = st.sidebar.radio("功能导航", ["✍️ 文生图", "🖼️ 图生图"
 st.title("🚀 AI Pro Studio")
 col_main, col_history = st.columns([7, 3])
 with col_main:
-    selected_model = st.selectbox("🤖 选择创作模型", ["gpt-image-2", "gpt-image-2-vip"], help="VIP模型支持更高分辨率和更强细节")
+    selected_model = st.selectbox("🤖 选择创作模型", ["gpt-image-2(600)", "gpt-image-2-vip(900)"], help="VIP模型支持更高分辨率和更强细节")
     if menu == "✍️ 文生图":
         prompt_txt = st.text_area("输入画面详细描述", height=120, placeholder="描述词...")
         c1, c2 = st.columns(2)
