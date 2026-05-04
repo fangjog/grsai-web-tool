@@ -14,7 +14,7 @@ from supabase import create_client, Client
 # ==========================================
 # 0. 网页基础配置
 # ==========================================
-st.set_page_config(page_title="AI Pro Studio V6.4", page_icon="🚀", layout="wide", initial_sidebar_state="auto")
+st.set_page_config(page_title="AI Pro Studio V6.5", page_icon="🚀", layout="wide", initial_sidebar_state="auto")
 
 st.markdown("""
 <style>
@@ -41,7 +41,12 @@ except Exception as e:
     st.error("❌ 数据库连接失败，请检查 Secrets 配置。")
     st.stop()
 
-IMAGE_COST = 600
+# 🌟 新增：动态模型定价表
+MODEL_COSTS = {
+    "gpt-image-2": 600,
+    "gpt-image-2-vip": 900
+}
+
 TASKS_FILE = "tasks_history.json"
 
 def load_json(path, default={}):
@@ -127,9 +132,9 @@ def pil_to_data_uri(img):
     return f"data:image/jpeg;base64,{base64.b64encode(buffered.getvalue()).decode()}"
 
 # ==========================================
-# 进度展示 (内嵌兼容版)
+# 进度展示 (动态阶梯计费版)
 # ==========================================
-def show_progress_dialog(task_id, prompt_text, active_user_key):
+def show_progress_dialog(task_id, prompt_text, active_user_key, model_used):
     with st.container():
         st.markdown("---")
         st.markdown(f"**🔍 实时生图进度**\n\n**任务描述:** `{prompt_text}`")
@@ -138,6 +143,9 @@ def show_progress_dialog(task_id, prompt_text, active_user_key):
         
     headers = {"Authorization": f"Bearer {GRSAI_API_KEY}", "Content-Type": "application/json"}
     query_url = "https://grsai.dakka.com.cn/v1/draw/result"
+    
+    # 🌟 核心：计算单张图的成本
+    cost_per_img = MODEL_COSTS.get(model_used, 600)
     
     for i in range(40):
         p = min(5 + i*2, 95)
@@ -152,8 +160,12 @@ def show_progress_dialog(task_id, prompt_text, active_user_key):
                     progress_bar.progress(100)
                     results = q_res["data"]["results"]
                     num_images = len(results)
-                    deduct_balance(active_user_key, num_images * IMAGE_COST)
-                    status_text.success(f"✅ **生成成功！已扣除 {num_images} 张额度。**")
+                    
+                    # 动态扣减总积分
+                    total_cost = num_images * cost_per_img
+                    deduct_balance(active_user_key, total_cost)
+                    status_text.success(f"✅ **生成成功！(共出 {num_images} 张，已扣除 {total_cost} 积分)**")
+                    
                     urls = [img["url"] for img in results]
                     for t in st.session_state.tasks:
                         if t['task_id'] == task_id:
@@ -174,9 +186,11 @@ def show_progress_dialog(task_id, prompt_text, active_user_key):
 # ==========================================
 # 4. 主界面
 # ==========================================
-max_images = int(current_balance // IMAGE_COST)
+# 🌟 侧边栏展示升级：显示积分 + 预估张数
 st.sidebar.markdown(f'### 👤 用户中心\n当前用户: `{user_key}`')
-st.sidebar.markdown(f'剩余可制图: <span style="color:#00c2ff; font-weight:bold; font-size:22px;">{max_images}</span> 张', unsafe_allow_html=True)
+st.sidebar.markdown(f'剩余积分: <span style="color:#00c2ff; font-weight:bold; font-size:24px;">{current_balance}</span>', unsafe_allow_html=True)
+st.sidebar.markdown(f'<div style="font-size:13px; color:#666;">标准模式约可制 <b style="color:#333;">{current_balance//600}</b> 张<br>VIP 模式约可制 <b style="color:#333;">{current_balance//900}</b> 张</div>', unsafe_allow_html=True)
+
 if st.sidebar.button("🚪 退出登录", use_container_width=True):
     st.query_params.clear()
     if 'tasks' in st.session_state: del st.session_state.tasks
@@ -189,14 +203,12 @@ st.title("🚀 AI Pro Studio")
 col_main, col_history = st.columns([7, 3])
 
 with col_main:
-    # 🌟 新增模型选择
     selected_model = st.selectbox("🤖 选择创作模型", ["gpt-image-2", "gpt-image-2-vip"], help="VIP模型支持更高分辨率和更强细节")
     
     if menu == "✍️ 文生图":
         prompt_txt = st.text_area("输入画面详细描述", height=120, placeholder="描述词...")
         c1, c2 = st.columns(2)
         with c1: 
-            # 🌟 比例选项升级
             ratio_opts = ["auto", "1:1", "3:2", "2:3", "16:9", "9:16", "5:4", "4:5", "4:3", "3:4", "21:9", "9:21", "1:3", "3:1", "2:1", "1:2", "自定义像素"]
             aspect_ratio = st.selectbox("📏 画幅比例", ratio_opts)
             custom_size = ""
@@ -222,10 +234,12 @@ with col_main:
         btn_submit = st.button("🚀 开始垫图生成", type="primary", use_container_width=True)
 
     if btn_submit:
-        if current_balance < IMAGE_COST: st.error("❌ 额度不足。")
+        # 🌟 提交前校验：根据选择的模型查验余额
+        required_points = MODEL_COSTS.get(selected_model, 600)
+        if current_balance < required_points: 
+            st.error(f"❌ 额度不足，当前模型需要 {required_points} 积分。")
         elif not prompt_txt and menu == "✍️ 文生图": st.error("❌ 请输入提示词！")
         else:
-            # 🌟 构建最终比例参数
             final_ratio = custom_size if aspect_ratio == "自定义像素" else aspect_ratio
             payload = {"model": selected_model, "prompt": prompt_txt, "webHook": "-1", "shutProgress": True}
             
@@ -246,7 +260,8 @@ with col_main:
             try:
                 sub_res = requests.post("https://grsai.dakka.com.cn/v1/draw/completions", headers=headers, json=payload, verify=False).json()
                 if sub_res.get("code") == 0:
-                    add_task({"task_id": sub_res["data"]["id"], "timestamp": time.time(), "time_str": datetime.now().strftime("%H:%M"), "prompt": prompt_txt, "status": "running", "urls": []}, user_key)
+                    # 🌟 提交时将选择的模型记入队列
+                    add_task({"task_id": sub_res["data"]["id"], "timestamp": time.time(), "time_str": datetime.now().strftime("%H:%M"), "prompt": prompt_txt, "status": "running", "urls": [], "model": selected_model}, user_key)
                     st.success("🎉 任务已提交！")
                     time.sleep(1); st.rerun()
                 else: st.error(f"失败：{sub_res.get('msg')}")
@@ -259,12 +274,14 @@ with col_history:
     else:
         with st.container(height=700):
             for item in reversed(tasks_list):
-                st.markdown(f"**[{item['time_str']}]**")
+                model_used_badge = "👑 VIP" if item.get('model') == 'gpt-image-2-vip' else "普"
+                st.markdown(f"**[{item['time_str']}]** `{model_used_badge}`")
                 if item.get('status') == 'running':
                     if st.button("🔍 查看进度", key=item['task_id'], use_container_width=True):
-                        show_progress_dialog(item['task_id'], item['prompt'], user_key)
+                        # 🌟 查看进度时，传入当时记录的模型参数
+                        show_progress_dialog(item['task_id'], item['prompt'], user_key, item.get('model', 'gpt-image-2'))
                 elif item.get('status') == 'succeeded':
                     for url in item.get('urls', []):
-                        st.markdown(f'<a href="{url}" target="_blank"><img src="{url}" style="width:100%; border-radius:8px; margin-bottom:8px;"></a>', unsafe_allow_html=True)
+                        st.markdown(f'<a href="{url}" target="_blank"><img src="{url}" style="width:100%; border-radius:8px; cursor:zoom-in; transition: transform 0.2s; box-shadow: 0 2px 6px rgba(0,0,0,0.1); margin-bottom:8px;" onmouseover="this.style.transform=\'scale(1.02)\'" onmouseout="this.style.transform=\'scale(1)\'"></a>', unsafe_allow_html=True)
                 elif item.get('status') == 'failed': st.error("❌ 失败")
                 st.divider()
