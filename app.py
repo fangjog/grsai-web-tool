@@ -15,7 +15,7 @@ import pytz
 # ==========================================
 # 0. 网页基础配置与全局 CSS
 # ==========================================
-st.set_page_config(page_title="AI Pro Studio V6.44", page_icon="🚀", layout="wide", initial_sidebar_state="auto")
+st.set_page_config(page_title="AI Pro Studio V6.45", page_icon="🚀", layout="wide", initial_sidebar_state="auto")
 
 st.markdown("""
 <style>
@@ -94,7 +94,7 @@ st.markdown("""
     
     .view-side { flex: 1; display: flex; gap: 2px; background: #111; border-radius: 0 0 12px 12px; overflow: hidden;}
     .side-panel { flex: 1; position: relative; background: #0b0b0b; display: flex; align-items: center; justify-content: center; overflow: hidden;}
-    .side-panel img { width: 100%; height: 100%; object-fit: contain; transition: transform 0.15s ease-out;}
+    .side-panel img { width: 100%; height: 100%; object-fit: contain;}
     .side-label { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.8); color: #fff; padding: 8px 18px; border-radius: 20px; font-size: 15px; font-weight:bold; border: 1px solid #555; pointer-events: none;}
 </style>
 """, unsafe_allow_html=True)
@@ -309,10 +309,11 @@ with col_main:
                 uploaded_b64_urls.append(data_uri) 
                 zoom_id = f"zm_up_{i}" 
                 with p_cols[i % 6]:
+                    # 上传区单图放大 (剔除了被屏蔽的JS)
                     html_str = (
                         f'<label for="{zoom_id}"><img src="{data_uri}" class="result-thumb" style="width:100%; border-radius:8px; cursor:zoom-in;"><div style="text-align:center; font-size:11px; color:#aaa; margin-top:2px;">图 {i+1} (点击放大)</div></label>'
                         f'<input type="checkbox" id="{zoom_id}" class="modal-checkbox">'
-                        f'<div class="img-modal-overlay"><label for="{zoom_id}" class="modal-close-bg"></label><div class="single-view"><img src="{data_uri}" onmousemove="this.style.transformOrigin=(event.offsetX/this.offsetWidth)*100+\'% \'+(event.offsetY/this.offsetHeight)*100+\'%\';this.style.transform=\'scale(2.5)\'" onmouseout="this.style.transform=\'scale(1)\'" style="transition:transform 0.1s;cursor:crosshair;"></div></div>'
+                        f'<div class="img-modal-overlay"><label for="{zoom_id}" class="modal-close-bg"></label><div class="single-view"><img src="{data_uri}"></div></div>'
                     )
                     st.markdown(html_str, unsafe_allow_html=True)
         
@@ -410,7 +411,7 @@ with col_history:
                     for i, url in enumerate(urls):
                         modal_id = f"cb_{str(item['task_id']).replace('-','')}_{i}"
                         
-                        # 🌟 动态呼出对比引擎！单图放大 -> 呼出对比
+                        # 🌟 去除被屏蔽的JS，只保留清爽结构
                         if src_urls and i < len(src_urls):
                             before_url = src_urls[i]
                             after_url = url
@@ -418,31 +419,29 @@ with col_history:
                             html_str = (
                                 f'<div class="modal-wrapper" style="position:relative;">'
                                 f'<label for="{modal_id}" style="cursor:zoom-in;display:block;">'
-                                f'<img src="{after_url}" class="result-thumb" style="width:100%;border-radius:8px;box-shadow:0 2px 6px rgba(0,0,0,0.1);transition:transform 0.2s;" onmouseover="this.style.transform=\'scale(1.02)\'" onmouseout="this.style.transform=\'scale(1)\'">'
+                                f'<img src="{after_url}" class="result-thumb" style="width:100%;border-radius:8px;box-shadow:0 2px 6px rgba(0,0,0,0.1);">'
+                                f'<div style="text-align:center;font-size:11px;color:#aaa;margin-top:4px;">图 {i+1} (点击查看)</div>'
                                 f'</label>'
                                 f'<input type="checkbox" id="{modal_id}" class="modal-checkbox">'
                                 f'<div class="img-modal-overlay">'
                                     f'<label for="{modal_id}" class="modal-close-bg"></label>'
                                     
-                                    f''
                                     f'<input type="checkbox" id="compare_{modal_id}" class="compare-radio">'
                                     
-                                    f''
                                     f'<div class="single-view">'
-                                        f'<img src="{after_url}" onmousemove="this.style.transformOrigin=(event.offsetX/this.offsetWidth)*100+\'% \'+(event.offsetY/this.offsetHeight)*100+\'%\';this.style.transform=\'scale(2.5)\'" onmouseout="this.style.transform=\'scale(1)\'" style="transition:transform 0.1s;cursor:crosshair;">'
-                                        f'<label for="compare_{modal_id}" class="toggle-compare-btn">✨ 对比原图</label>'
+                                        f'<img src="{after_url}">'
+                                        f'<label for="compare_{modal_id}" class="toggle-compare-btn">✨ 左右对比原图</label>'
                                     f'</div>'
                                     
-                                    f''
                                     f'<div class="compare-view">'
                                         f'<div class="compare-header">'
-                                            f'<div><label for="compare_{modal_id}" class="back-btn">⬅️ 返回单图</label></div>'
-                                            f'<span style="color:#fff;font-size:16px;font-weight:bold;">🪟 图像优化对比 (鼠标悬停放大)</span>'
+                                            f'<div><label for="compare_{modal_id}" class="back-btn">⬅️ 返回</label></div>'
+                                            f'<span style="color:#fff;font-size:16px;font-weight:bold;">🪟 图像优化对比</span>'
                                             f'<label for="{modal_id}" class="close-btn">&times;</label>'
                                         f'</div>'
                                         f'<div class="view-side">'
-                                            f'<div class="side-panel"><img src="{before_url}" onmousemove="this.style.transformOrigin=(event.offsetX/this.offsetWidth)*100+\'% \'+(event.offsetY/this.offsetHeight)*100+\'%\';this.style.transform=\'scale(2.5)\'" onmouseout="this.style.transform=\'scale(1)\'" style="cursor:crosshair;"><div class="side-label">原图 (Before)</div></div>'
-                                            f'<div class="side-panel"><img src="{after_url}" onmousemove="this.style.transformOrigin=(event.offsetX/this.offsetWidth)*100+\'% \'+(event.offsetY/this.offsetHeight)*100+\'%\';this.style.transform=\'scale(2.5)\'" onmouseout="this.style.transform=\'scale(1)\'" style="cursor:crosshair;"><div class="side-label">成品 (After)</div></div>'
+                                            f'<div class="side-panel"><img src="{before_url}"><div class="side-label">原图 (Before)</div></div>'
+                                            f'<div class="side-panel"><img src="{after_url}"><div class="side-label">成品 (After)</div></div>'
                                         f'</div>'
                                     f'</div>'
                                     
@@ -454,12 +453,12 @@ with col_history:
                             html_str = (
                                 f'<div class="modal-wrapper" style="position:relative;">'
                                 f'<label for="{modal_id}" style="cursor:zoom-in;display:block;">'
-                                f'<img src="{url}" class="result-thumb" style="width:100%;border-radius:8px;box-shadow:0 2px 6px rgba(0,0,0,0.1);transition:transform 0.2s;" onmouseover="this.style.transform=\'scale(1.02)\'" onmouseout="this.style.transform=\'scale(1)\'">'
+                                f'<img src="{url}" class="result-thumb" style="width:100%;border-radius:8px;box-shadow:0 2px 6px rgba(0,0,0,0.1);">'
                                 f'</label>'
                                 f'<input type="checkbox" id="{modal_id}" class="modal-checkbox">'
                                 f'<div class="img-modal-overlay">'
                                 f'<label for="{modal_id}" class="modal-close-bg"></label>'
-                                f'<div class="single-view"><img src="{url}" onmousemove="this.style.transformOrigin=(event.offsetX/this.offsetWidth)*100+\'% \'+(event.offsetY/this.offsetHeight)*100+\'%\';this.style.transform=\'scale(2.5)\'" onmouseout="this.style.transform=\'scale(1)\'" style="transition:transform 0.1s;cursor:crosshair;"></div>'
+                                f'<div class="single-view"><img src="{url}"></div>'
                                 f'</div>'
                                 f'</div>'
                             )
