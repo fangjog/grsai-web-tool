@@ -15,7 +15,7 @@ import pytz
 # ==========================================
 # 0. 网页基础配置与防抖 CSS
 # ==========================================
-st.set_page_config(page_title="AI Pro Studio V6.21", page_icon="🚀", layout="wide", initial_sidebar_state="auto")
+st.set_page_config(page_title="AI Pro Studio V6.22", page_icon="🚀", layout="wide", initial_sidebar_state="auto")
 
 st.markdown("""
 <style>
@@ -60,13 +60,10 @@ TASKS_FILE = "tasks_history.json"
 ratio_opts = ["auto", "1:1", "3:2", "2:3", "16:9", "9:16", "5:4", "4:5", "4:3", "3:4", "21:9", "9:21", "1:3", "3:1", "2:1", "1:2", "自定义像素"]
 quality_opts = ["auto", "high", "medium", "low"]
 
-# 🌟 V6.21 核心：万能 JSON 解析器（专门对付不规范的 API 返回）
 def parse_api_response(text):
     if not text: return None
-    try: return json.loads(text) # 先尝试标准解析
+    try: return json.loads(text)
     except: pass
-    
-    # 尝试暴力剥离 "data: " 前缀
     for line in text.split('\n'):
         line = line.strip()
         if line.startswith('data:'):
@@ -154,14 +151,13 @@ def auto_poll_task(task_id, active_user_key, model_used, start_time):
         placeholder.markdown(f'<div style="background:#1a1a1a;border-radius:10px;padding:4px;"><div style="height:12px;border-radius:6px;background:linear-gradient(90deg,#00c2ff,#00ffd5);width:{p}%;"></div></div><div style="text-align:right;color:#00ffd5;font-size:12px;margin-top:4px;">⚡ 注入中... {p}%</div>', unsafe_allow_html=True)
         
         try:
-            resp = requests.post(query_url, headers=headers, json={"id": task_id}, verify=False)
-            q_res = parse_api_response(resp.text) # 🌟 轮询也使用万能解析器
+            resp = requests.post(query_url, headers=headers, json={"id": task_id}, verify=False, timeout=30)
+            q_res = parse_api_response(resp.text) 
             
             if q_res:
                 status = None
                 urls = []
                 
-                # 兼容标准和非标准格式
                 if q_res.get("code") == 0 and "data" in q_res:
                     status = q_res["data"].get("status")
                     urls = [img.get("url") for img in q_res["data"].get("results", []) if img.get("url")]
@@ -245,16 +241,24 @@ with col_main:
         if current_balance < cost: st.error("❌ 积分不足")
         elif not prompt_txt and menu == "✍️ 文生图": st.error("请输入提示词")
         else:
-            payload = {"model": selected_model, "prompt": prompt_txt, "aspectRatio": custom_size or aspect_ratio, "quality": quality, "shutProgress": True}
+            # 🌟 核心破案点：必须带上 "webHook": "-1"，打死不能删，否则 API 就死机卡住！
+            payload = {
+                "model": selected_model, 
+                "prompt": prompt_txt, 
+                "aspectRatio": custom_size or aspect_ratio, 
+                "quality": quality, 
+                "shutProgress": True,
+                "webHook": "-1"  # 🌟 恢复这个核心暗号，让 API 秒回 Task ID！
+            }
             if menu == "🖼️ 图生图":
                 u_list = [pil_to_data_uri(Image.open(f)) for f in files] if files else [pil_to_data_uri(Image.fromarray(canvas_result.image_data.astype('uint8'), 'RGBA'))] if canvas_result else []
                 if not u_list: st.error("⚠️ 缺少参考图"); st.stop()
                 payload["urls"] = u_list
             
             try:
-                response = requests.post("https://grsai.dakka.com.cn/v1/draw/completions", headers={"Authorization": f"Bearer {GRSAI_API_KEY}"}, json=payload, verify=False)
+                response = requests.post("https://grsai.dakka.com.cn/v1/draw/completions", headers={"Authorization": f"Bearer {GRSAI_API_KEY}"}, json=payload, verify=False, timeout=15)
                 if response.status_code == 200:
-                    api_res = parse_api_response(response.text) # 🌟 核心：使用万能解析器提取任务 ID
+                    api_res = parse_api_response(response.text) 
                     task_id = None
                     
                     if api_res:
