@@ -15,7 +15,7 @@ import pytz
 # ==========================================
 # 0. 网页基础配置与全局 CSS
 # ==========================================
-st.set_page_config(page_title="AI Pro Studio V6.42", page_icon="🚀", layout="wide", initial_sidebar_state="auto")
+st.set_page_config(page_title="AI Pro Studio V6.43", page_icon="🚀", layout="wide", initial_sidebar_state="auto")
 
 st.markdown("""
 <style>
@@ -68,25 +68,20 @@ st.markdown("""
     
     /* 左右视图区域 */
     .view-side {
-        flex: 1; display: flex; gap: 2px; background: #111; border-radius: 0 0 12px 12px;
-        overflow: hidden; /* 极其重要：防止放大时图片溢出边框 */
+        flex: 1; display: flex; gap: 2px; background: #111; border-radius: 0 0 12px 12px; overflow: hidden;
     }
     .side-panel {
-        flex: 1; position: relative; background: #0b0b0b; display: flex; align-items: center; justify-content: center;
-        overflow: hidden; /* 极其重要：防止放大时图片溢出边框 */
+        flex: 1; position: relative; background: #0b0b0b; display: flex; align-items: center; justify-content: center; overflow: hidden;
     }
     
     .side-panel img { 
-        width: 100%; height: 100%; object-fit: contain; 
-        /* 过渡动画使放大平滑 */
-        transition: transform 0.15s ease-out;
+        width: 100%; height: 100%; object-fit: contain; transition: transform 0.15s ease-out;
     }
     
     .side-label { 
         position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); 
         background: rgba(0,0,0,0.8); color: #fff; padding: 8px 18px; 
-        border-radius: 20px; font-size: 15px; font-weight:bold; border: 1px solid #555;
-        pointer-events: none; /* 防止标签遮挡鼠标放大事件 */
+        border-radius: 20px; font-size: 15px; font-weight:bold; border: 1px solid #555; pointer-events: none;
     }
     
     /* 单图放大容器 */
@@ -94,14 +89,13 @@ st.markdown("""
         position: relative; z-index: 10; max-width: 90vw; max-height: 90vh; overflow: hidden; border-radius: 12px;
     }
     .single-img-container img {
-        max-width: 90vw; max-height: 90vh; border-radius: 12px; 
-        box-shadow: 0 0 50px rgba(0,0,0,0.8); object-fit: contain;
+        max-width: 90vw; max-height: 90vh; border-radius: 12px; box-shadow: 0 0 50px rgba(0,0,0,0.8); object-fit: contain;
     }
 </style>
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 1. 常量与数据库初始化
+# 1. 常量、数据库与缓存加速引擎
 # ==========================================
 MODEL_COSTS = {"gpt-image-2": 600, "gpt-image-2-vip": 900}
 ratio_opts = ["auto", "1:1", "3:2", "2:3", "16:9", "9:16", "5:4", "4:5", "4:3", "3:4", "21:9", "9:21", "1:3", "3:1", "2:1", "1:2", "自定义像素"]
@@ -115,6 +109,18 @@ try:
 except Exception as e:
     st.error("❌ 数据库连接失败。")
     st.stop()
+
+# 🚀 极致性能优化：内存缓存 Base64 转码，避免打字卡顿，压缩体积加速上传
+@st.cache_data(show_spinner=False, max_entries=20)
+def process_cached_data_uri(img_bytes):
+    img = Image.open(io.BytesIO(img_bytes))
+    if img.mode != 'RGB': img = img.convert('RGB')
+    # 使用 LANCZOS 高质量抗锯齿缩放
+    img.thumbnail((1024, 1024), Image.Resampling.LANCZOS)
+    buffered = io.BytesIO()
+    # 开启 optimize 并降低少许 quality，大幅缩减 Payload 体积，加速 API 传输
+    img.save(buffered, format="JPEG", quality=82, optimize=True)
+    return f"data:image/jpeg;base64,{base64.b64encode(buffered.getvalue()).decode()}"
 
 def fetch_tasks_from_db(card_key):
     try:
@@ -172,13 +178,6 @@ def deduct_balance(card_key, amount):
             supabase.table("user_cards").update({"used_points": new_used, "final_points": new_final}).eq("card_key", card_key).execute()
     except: pass
 
-def pil_to_data_uri(img):
-    buffered = io.BytesIO()
-    if img.mode != 'RGB': img = img.convert('RGB')
-    img.thumbnail((1024, 1024)) 
-    img.save(buffered, format="JPEG")
-    return f"data:image/jpeg;base64,{base64.b64encode(buffered.getvalue()).decode()}"
-
 def parse_api_response(text):
     if not text: return None
     try: return json.loads(text)
@@ -217,18 +216,19 @@ clean_api_name = (card_info.get('api_secret_name') or "API_VIP888").strip("'").s
 GRSAI_API_KEY = st.secrets.get(clean_api_name, "")
 
 # ==========================================
-# 3. 自动轮询 
+# 3. 自动轮询 (高频提速版)
 # ==========================================
 def auto_poll_task(task_id, active_user_key, model_used, start_time, src_urls=None):
     placeholder = st.empty()
     headers = {"Authorization": f"Bearer {GRSAI_API_KEY}", "Content-Type": "application/json"}
     query_url = "https://grsai.dakka.com.cn/v1/draw/result"
     
-    for i in range(60):
-        p = min(5 + int(time.time() - start_time), 95)
+    # 提速：增加循环次数，减少睡眠时间
+    for i in range(90):
+        p = min(5 + int((time.time() - start_time) * 1.5), 98) # 进度条走得更顺滑
         placeholder.markdown(f'<div style="background:#111;border-radius:10px;padding:4px;border:1px solid #333;"><div style="height:12px;border-radius:6px;background:linear-gradient(90deg,#00c2ff,#00ffd5);width:{p}%;"></div></div><div style="text-align:right;color:#00ffd5;font-size:12px;margin-top:4px;">⚡ 生成中... {p}%</div>', unsafe_allow_html=True)
         try:
-            resp = requests.post(query_url, headers=headers, json={"id": task_id}, verify=False, timeout=15)
+            resp = requests.post(query_url, headers=headers, json={"id": task_id}, verify=False, timeout=10)
             q_res = parse_api_response(resp.text) 
             if q_res:
                 status, urls = "", []
@@ -246,12 +246,13 @@ def auto_poll_task(task_id, active_user_key, model_used, start_time, src_urls=No
                     task_update = {"task_id": task_id, "status": "succeeded", "urls": [urls[0]], "is_deducted": True}
                     if src_urls: task_update["src_urls"] = src_urls 
                     sync_task_to_db(task_update, active_user_key)
-                    time.sleep(1.5); st.rerun(); return 
+                    time.sleep(1.0); st.rerun(); return 
                 elif status == "failed":
                     sync_task_to_db({"task_id": task_id, "status": "failed"}, active_user_key)
                     st.rerun(); return
         except Exception as e: pass
-        time.sleep(3)
+        # 提速：检测间隔从 3s 降低到 2s，第一时间抓回结果
+        time.sleep(2)
 
 # ==========================================
 # 4. 主界面
@@ -305,14 +306,13 @@ with col_main:
         if uploaded_files:
             p_cols = st.columns(6) 
             for i, file in enumerate(uploaded_files):
-                img_bytes = file.getvalue()
-                data_uri = pil_to_data_uri(Image.open(io.BytesIO(img_bytes)))
+                # 调用超高速缓存引擎！打字再也不卡了！
+                data_uri = process_cached_data_uri(file.getvalue())
                 uploaded_b64_urls.append(data_uri) 
                 zoom_id = f"zm_up_{i}" 
                 with p_cols[i % 6]:
-                    # 🌟 修复上传区的单图放大，加入了鼠标跟随放大镜功能
                     html_str = (
-                        f'<label for="{zoom_id}"><img src="{data_uri}" class="result-thumb" style="width:100%; border-radius:8px; cursor:zoom-in;"><div style="text-align:center; font-size:11px; color:#aaa; margin-top:2px;">图 {i+1}</div></label>'
+                        f'<label for="{zoom_id}"><img src="{data_uri}" class="result-thumb" style="width:100%; border-radius:8px; cursor:zoom-in;"><div style="text-align:center; font-size:11px; color:#aaa; margin-top:2px;">图 {i+1} (点击放大)</div></label>'
                         f'<input type="checkbox" id="{zoom_id}" class="modal-checkbox">'
                         f'<div class="img-modal-overlay"><label for="{zoom_id}" class="modal-close-bg"></label><div class="single-img-container"><img src="{data_uri}" onmousemove="this.style.transformOrigin=(event.offsetX/this.offsetWidth)*100+\'% \'+(event.offsetY/this.offsetHeight)*100+\'%\';this.style.transform=\'scale(2.5)\'" onmouseout="this.style.transform=\'scale(1)\'" style="transition:transform 0.1s;cursor:crosshair;"></div></div>'
                     )
@@ -335,7 +335,7 @@ with col_main:
         if card_info['final_points'] < 600: st.error("❌ 积分不足")
         elif not prompt_txt and menu == "✍️ 文生图": st.error("❌ 请输入描述词")
         else:
-            with st.spinner("🚀 正在注入云端算力..."):
+            with st.spinner("🚀 打包云端数据..."):
                 try:
                     final_ratio = custom_size if (menu == "✍️ 文生图" and aspect_ratio == "自定义像素") else (aspect_ratio if menu == "✍️ 文生图" else "auto")
                     payload = {"model": selected_model, "prompt": prompt_txt, "webHook": "-1", "shutProgress": True, "aspectRatio": final_ratio, "quality": quality if menu == "✍️ 文生图" else "auto"}
@@ -412,11 +412,9 @@ with col_history:
                     for i, url in enumerate(urls):
                         modal_id = f"cb_{str(item['task_id']).replace('-','')}_{i}"
                         
-                        # 🌟 新版核心逻辑：干掉划线对比，纯净左右布局，并加入了内联的鼠标动态平移放大代码！
                         if src_urls and i < len(src_urls):
                             before_url = src_urls[i]
                             after_url = url
-                            
                             html_str = (
                                 f'<div class="modal-wrapper" style="position:relative;">'
                                 f'<label for="{modal_id}" style="cursor:zoom-in;display:block;">'
@@ -438,7 +436,6 @@ with col_history:
                             )
                             st.markdown(html_str, unsafe_allow_html=True)
                         else:
-                            # 普通单图也有放大镜功能了！
                             html_str = (
                                 f'<div class="modal-wrapper" style="position:relative;">'
                                 f'<label for="{modal_id}" style="cursor:zoom-in;display:block;">'
