@@ -5,7 +5,7 @@ import time
 from PIL import Image
 import io
 import base64
-from datetime import datetime, timedelta
+from datetime import datetime
 import json
 import os
 from streamlit_drawable_canvas import st_canvas
@@ -15,19 +15,15 @@ import pytz
 # ==========================================
 # 0. 网页基础配置与全局 CSS
 # ==========================================
-st.set_page_config(page_title="AI Pro Studio V6.30", page_icon="🚀", layout="wide", initial_sidebar_state="auto")
+st.set_page_config(page_title="AI Pro Studio V6.31", page_icon="🚀", layout="wide", initial_sidebar_state="auto")
 
 st.markdown("""
 <style>
-    /* 基础优化：防止区域抖动 */
     [data-testid="stVerticalBlock"] { overflow-x: hidden !important; }
-    
     .stButton > button { border-radius: 8px; font-weight: bold; transition: all 0.3s; }
     .stButton > button:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
     
-    /* 🌟 HTML 模态框核心 CSS (Checkbox Hack) - 无缝放大无跳转 */
     .modal-checkbox { display: none !important; }
-    
     .result-thumb {
         width: 100%; border-radius: 8px; cursor: zoom-in; 
         transition: transform 0.2s ease-in-out; 
@@ -35,53 +31,49 @@ st.markdown("""
         display: block; opacity: 1 !important;
     }
     .result-thumb:hover { transform: scale(1.02); box-shadow: 0 6px 16px rgba(0,0,0,0.2); }
-    
     .img-modal-overlay {
         display: none; position: fixed; z-index: 999999; top: 0; left: 0; 
         width: 100vw; height: 100vh; background-color: rgba(0,0,0,0.92); 
         align-items: center; justify-content: center; cursor: zoom-out; 
     }
-    
-    /* 关键：Checkbox 被选中时，显示模态框 */
     .modal-checkbox:checked + .img-modal-overlay { display: flex; }
-    
     .img-modal-overlay img {
         max-width: 95vw; max-height: 95vh; border-radius: 12px; 
-        box-shadow: 0 0 40px rgba(0,194,255,0.3); border: 1px solid rgba(0,194,255,0.2); 
-        object-fit: contain;
+        box-shadow: 0 0 40px rgba(0,194,255,0.3); border: 1px solid rgba(0,194,255,0.2); object-fit: contain;
     }
 </style>
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 1. 数据库与初始化
+# 1. 数据库配置
 # ==========================================
 try:
     SUPABASE_URL = st.secrets["SUPABASE_URL"]
     SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
     supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 except Exception as e:
-    st.error("❌ 数据库连接失败。")
+    st.error("❌ 数据库连接失败")
     st.stop()
 
 MODEL_COSTS = {"gpt-image-2": 600, "gpt-image-2-vip": 900}
-TASKS_FILE = "tasks_history.json"
 ratio_opts = ["auto", "1:1", "3:2", "2:3", "16:9", "9:16", "5:4", "4:5", "4:3", "3:4", "21:9", "9:21", "1:3", "3:1", "2:1", "1:2", "自定义像素"]
 quality_opts = ["auto", "high", "medium", "low"]
 BJ_TZ = pytz.timezone('Asia/Shanghai')
 
-def load_json(path, default=None):
-    if default is None: default = {}
-    if os.path.exists(path):
-        try:
-            with open(path, "r", encoding="utf-8") as f: return json.load(f)
-        except: return default
-    return default
-
-def save_json(path, data):
+# 🌟 核心修复：纯云端获取历史记录
+def fetch_tasks_from_db(card_key):
     try:
-        with open(path, "w", encoding="utf-8") as f: json.dump(data, f, ensure_ascii=False)
-    except: pass
+        res = supabase.table("tasks").select("*").eq("card_key", card_key).order("timestamp", desc=True).limit(10).execute()
+        return res.data if res.data else []
+    except: return []
+
+# 🌟 核心修复：纯云端同步任务
+def sync_task_to_db(task_data, card_key):
+    try:
+        task_data["card_key"] = card_key
+        supabase.table("tasks").upsert(task_data, on_conflict="task_id").execute()
+    except Exception as e:
+        print(f"Supabase Sync Error: {e}")
 
 def get_card_info(card_key):
     try:
@@ -98,6 +90,23 @@ def deduct_balance(card_key, amount):
             new_final = res.data[0]['final_points'] - amount
             supabase.table("user_cards").update({"used_points": new_used, "final_points": new_final}).eq("card_key", card_key).execute()
     except: pass
+
+def pil_to_data_uri(img):
+    buffered = io.BytesIO()
+    if img.mode != 'RGB': img = img.convert('RGB')
+    img.thumbnail((1024, 1024)) 
+    img.save(buffered, format="JPEG")
+    return f"data:image/jpeg;base64,{base64.b64encode(buffered.getvalue()).decode()}"
+
+def parse_api_response(text):
+    if not text: return None
+    try: return json.loads(text)
+    except:
+        for line in text.split('\n'):
+            if line.strip().startswith('data:'):
+                try: return json.loads(line.strip()[5:])
+                except: pass
+    return None
 
 # ==========================================
 # 2. 身份验证
@@ -127,41 +136,7 @@ clean_api_name = (card_info.get('api_secret_name') or "API_VIP888").strip("'").s
 GRSAI_API_KEY = st.secrets.get(clean_api_name, "")
 
 # ==========================================
-# 3. 任务队列
-# ==========================================
-all_history = load_json(TASKS_FILE, default={})
-if isinstance(all_history, list): all_history = {}
-if 'tasks' not in st.session_state: st.session_state.tasks = all_history.get(user_key, [])
-
-def clean_and_get_tasks(active_key):
-    curr_time = time.time()
-    valid = [t for t in st.session_state.tasks if (curr_time - t['timestamp']) < 3600]
-    st.session_state.tasks = valid[-10:]
-    global_history = load_json(TASKS_FILE, default={})
-    if isinstance(global_history, list): global_history = {}
-    global_history[active_key] = st.session_state.tasks
-    save_json(TASKS_FILE, global_history)
-    return st.session_state.tasks
-
-def pil_to_data_uri(img):
-    buffered = io.BytesIO()
-    if img.mode != 'RGB': img = img.convert('RGB')
-    img.thumbnail((1024, 1024)) 
-    img.save(buffered, format="JPEG")
-    return f"data:image/jpeg;base64,{base64.b64encode(buffered.getvalue()).decode()}"
-
-def parse_api_response(text):
-    if not text: return None
-    try: return json.loads(text)
-    except:
-        for line in text.split('\n'):
-            if line.strip().startswith('data:'):
-                try: return json.loads(line.strip()[5:])
-                except: pass
-    return None
-
-# ==========================================
-# 自动轮询 
+# 3. 自动轮询 (云端版)
 # ==========================================
 def auto_poll_task(task_id, active_user_key, model_used, start_time):
     placeholder = st.empty()
@@ -169,7 +144,6 @@ def auto_poll_task(task_id, active_user_key, model_used, start_time):
     query_url = "https://grsai.dakka.com.cn/v1/draw/result"
     
     for i in range(60):
-        # 1. 计算进度并渲染进度条
         p = min(5 + int(time.time() - start_time), 95)
         placeholder.markdown(f'<div style="background:#111;border-radius:10px;padding:4px;border:1px solid #333;"><div style="height:12px;border-radius:6px;background:linear-gradient(90deg,#00c2ff,#00ffd5);width:{p}%;"></div></div><div style="text-align:right;color:#00ffd5;font-size:12px;margin-top:4px;">⚡ 生成中... {p}%</div>', unsafe_allow_html=True)
         
@@ -178,9 +152,7 @@ def auto_poll_task(task_id, active_user_key, model_used, start_time):
             q_res = parse_api_response(resp.text) 
             
             if q_res:
-                status = ""
-                urls = []
-                # 兼容不同格式
+                status, urls = "", []
                 if q_res.get("code") == 0 and "data" in q_res:
                     status = q_res["data"].get("status")
                     urls = [img.get("url") for img in q_res["data"].get("results", []) if img.get("url")]
@@ -190,29 +162,21 @@ def auto_poll_task(task_id, active_user_key, model_used, start_time):
 
                 if status == "succeeded" and urls:
                     placeholder.markdown(f'<div style="background:#111;border-radius:10px;padding:4px;border:1px solid #333;"><div style="height:12px;border-radius:6px;background:linear-gradient(90deg,#00ff88,#00c2ff);width:100%;"></div></div><div style="text-align:right;color:#00ff88;font-size:12px;margin-top:4px;">✅ 绘制完成！</div>', unsafe_allow_html=True)
-                    deduct_balance(active_user_key, MODEL_COSTS.get(model_used, 600))
                     
-                    # 🌟 更新本地 Session State 记录
-                    for t in st.session_state.tasks:
-                        if t['task_id'] == task_id:
-                            t.update({"status": "succeeded", "urls": [urls[0]], "is_deducted": True})
-                    clean_and_get_tasks(active_user_key)
+                    deduct_balance(active_user_key, MODEL_COSTS.get(model_used, 600))
+                    # 🌟 成功状态同步到云端
+                    sync_task_to_db({"task_id": task_id, "status": "succeeded", "urls": [urls[0]], "is_deducted": True}, active_user_key)
                     
                     time.sleep(1.5) 
                     st.rerun() 
                     return 
 
                 elif status == "failed":
-                    for t in st.session_state.tasks:
-                        if t['task_id'] == task_id:
-                            t.update({"status": "failed"})
-                    clean_and_get_tasks(active_user_key)
+                    # 🌟 失败状态同步到云端
+                    sync_task_to_db({"task_id": task_id, "status": "failed"}, active_user_key)
                     st.rerun()
                     return
-        except Exception as e:
-            # 仅捕获网络等基础异常，放行 st.rerun
-            pass
-            
+        except Exception as e: pass
         time.sleep(3)
 
 # ==========================================
@@ -240,8 +204,6 @@ col_main, col_history = st.columns([7, 3])
 
 with col_main:
     selected_model = st.selectbox("🤖 模型选择", ["gpt-image-2", "gpt-image-2-vip"])
-    
-    # 🌟 统一放大模态框容器（放在主界面底部，防止抖动）
     upload_zoom_container = st.empty()
     
     if menu == "✍️ 文生图":
@@ -250,17 +212,12 @@ with col_main:
         st.markdown("#### 🖼️ 图生图")
         uploaded_files = st.file_uploader("上传参考图", type=["png", "jpg"], accept_multiple_files=True)
         
-        preview_html = ""
-        zoom_html_modals = ""
-        
         if uploaded_files:
-            # 🌟 核心修复：直接使用 st.columns 在循环中分段渲染，杜绝源码泄露
             p_cols = st.columns(6) 
             for i, file in enumerate(uploaded_files):
                 img_bytes = file.getvalue()
                 data_uri = pil_to_data_uri(Image.open(io.BytesIO(img_bytes)))
-                zoom_id = f"zm_up_{i}" # 唯一锚点 ID
-                
+                zoom_id = f"zm_up_{i}" 
                 with p_cols[i % 6]:
                     st.markdown(f'''
                         <label for="{zoom_id}">
@@ -279,7 +236,6 @@ with col_main:
             
         prompt_txt = st.text_area("垫图指令", height=80)
 
-    # 统一参数面板
     c1, c2 = st.columns(2)
     with c1: 
         aspect_ratio = st.selectbox("📏 画幅比例", ratio_opts, key=f"r_{menu}")
@@ -305,7 +261,7 @@ with col_main:
                     }
                     
                     if menu == "🖼️ 图生图":
-                        if not uploaded_files: # 🌟 变量名彻底对齐，杜绝 NameError
+                        if not uploaded_files: 
                             st.error("⚠️ 请先上传参考图"); st.stop()
                         try:
                             payload["urls"] = [pil_to_data_uri(Image.open(io.BytesIO(f.getvalue()))) for f in uploaded_files]
@@ -326,7 +282,6 @@ with col_main:
                             elif "id" in api_res: task_id = api_res["id"]
                         
                         if task_id:
-                            # 🌟 核心：使用你原本的本地存储逻辑，杜绝 sync_task_to_db 找不到的致命错误
                             bj_now = datetime.now(BJ_TZ).strftime("%H:%M")
                             new_task = {
                                 "task_id": task_id, 
@@ -337,9 +292,9 @@ with col_main:
                                 "urls": [], 
                                 "model": selected_model
                             }
-                            st.session_state.tasks.append(new_task)
-                            clean_and_get_tasks(user_key)
-                            st.rerun() # 成功后立即刷新进入轮询
+                            # 🌟 核心修复：提交成功后，直接写入云端数据库！
+                            sync_task_to_db(new_task, user_key)
+                            st.rerun()
                         else:
                             st.error(f"❌ API未返回有效ID: {response.text[:100]}")
                     else:
@@ -350,15 +305,17 @@ with col_main:
 
 with col_history:
     st.markdown("### 🗂️ 创作记录")
-    # 🌟 渲染本地历史记录，再也不会消失
-    tasks_list = clean_and_get_tasks(user_key)
+    
+    # 🌟 核心修复：直接从云端读取记录！
+    tasks_list = fetch_tasks_from_db(user_key)
     
     if not tasks_list:
         st.info("暂无记录")
     else:
         total_len = len(tasks_list)
         with st.container(height=700):
-            for idx, item in enumerate(reversed(tasks_list)):
+            # 注意：数据库拉取下来已经是按照 timestamp 倒序排好的，不需要 reversed
+            for idx, item in enumerate(tasks_list):
                 display_idx = total_len - idx
                 m_badge = "👑 VIP" if item.get('model') == 'gpt-image-2-vip' else "普"
                 st.markdown(f"**[{display_idx}]** **[{item['time_str']}]** `{m_badge}` 💡 {item['prompt'][:10]}...")
@@ -374,5 +331,5 @@ with col_history:
                         imgs_html += f'<label for="{modal_id}"><img src="{url}" class="result-thumb"></label><input type="checkbox" id="{modal_id}" class="modal-checkbox"><label for="{modal_id}" class="img-modal-overlay"><img src="{url}"></label>'
                     st.markdown(imgs_html, unsafe_allow_html=True)
                 elif item['status'] == 'failed': 
-                    st.error(f"❌ 触发安全审查或失败")
+                    st.error(f"❌ 失败")
                 st.divider()
