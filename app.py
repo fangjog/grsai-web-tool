@@ -288,8 +288,20 @@ with col_history:
     else:
         with st.container(height=700):
             for item in reversed(tasks_list):
+                # 1. 模型标识
                 model_used_badge = "👑 VIP" if item.get('model') == 'gpt-image-2-vip' else "普"
-                st.markdown(f"**[{item['time_str']}]** `{model_used_badge}`")
+                
+                # 2. 提示词截断处理 (超过10个字加省略号)
+                prompt_text = item.get('prompt', '')
+                short_prompt = prompt_text[:10] + "..." if len(prompt_text) > 10 else prompt_text
+                
+                # 3. 完美排版：时间 + 模型 + 短提示词
+                st.markdown(f"**[{item['time_str']}]** `{model_used_badge}` 💡 {short_prompt}")
+                
+                # 4. 隐藏式一键复制折叠面板 (利用 st.code 自带的复制按钮)
+                with st.expander("📋 展开复制完整提示词"):
+                    st.code(prompt_text, language="text")
+
                 if item.get('status') == 'running':
                     if st.button("🔍 查看进度", key=item['task_id'], use_container_width=True):
                         # 🌟 查看进度时，传入当时记录的模型参数
@@ -297,5 +309,7 @@ with col_history:
                 elif item.get('status') == 'succeeded':
                     for url in item.get('urls', []):
                         st.markdown(f'<a href="{url}" target="_blank"><img src="{url}" style="width:100%; border-radius:8px; cursor:zoom-in; transition: transform 0.2s; box-shadow: 0 2px 6px rgba(0,0,0,0.1); margin-bottom:8px;" onmouseover="this.style.transform=\'scale(1.02)\'" onmouseout="this.style.transform=\'scale(1)\'"></a>', unsafe_allow_html=True)
-                elif item.get('status') == 'failed': st.error("❌ 失败")
+                elif item.get('status') == 'failed': 
+                    st.error("❌ 生成失败")
+                    
                 st.divider()
