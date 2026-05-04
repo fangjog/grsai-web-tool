@@ -321,7 +321,7 @@ with col_history:
     else:
         with st.container(height=700):
             for item in reversed(tasks_list):
-                model_used_badge = "👑 VIP" if item.get('model') == 'gpt-image-2-vip' else "普"
+                model_used_badge = "👑 VIP" if item.get('model') == 'gpt-image-2-vip' else "gpt-image-2"
                 prompt_text = item.get('prompt', '')
                 short_prompt = prompt_text[:10] + "..." if len(prompt_text) > 10 else prompt_text
                 
