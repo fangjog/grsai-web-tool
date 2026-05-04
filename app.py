@@ -1,5 +1,6 @@
 # 文件名: app.py
 import streamlit as st
+import streamlit.components.v1 as components
 import requests
 import time
 from PIL import Image
@@ -15,7 +16,7 @@ import pytz
 # ==========================================
 # 0. 网页基础配置与全局 CSS
 # ==========================================
-st.set_page_config(page_title="AI Pro Studio V6.45", page_icon="🚀", layout="wide", initial_sidebar_state="auto")
+st.set_page_config(page_title="AI Pro Studio V6.46", page_icon="🚀", layout="wide", initial_sidebar_state="auto")
 
 st.markdown("""
 <style>
@@ -23,7 +24,6 @@ st.markdown("""
     .stButton > button { border-radius: 8px; font-weight: bold; transition: all 0.3s; }
     .stButton > button:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
     
-    /* 🌟 核心 CSS */
     .modal-checkbox { display: none !important; }
     
     .result-thumb {
@@ -34,7 +34,6 @@ st.markdown("""
     }
     .result-thumb:hover { transform: scale(1.02); box-shadow: 0 6px 16px rgba(0,0,0,0.2); }
     
-    /* 遮罩层 */
     .img-modal-overlay {
         display: none; position: fixed; z-index: 999999; top: 0; left: 0; 
         width: 100vw; height: 100vh; align-items: center; justify-content: center; 
@@ -46,17 +45,15 @@ st.markdown("""
         background: rgba(0,0,0,0.92); cursor: zoom-out; z-index: 1;
     }
     
-    /* 单图放大容器 (默认视图) */
     .single-view {
         position: relative; z-index: 10; max-width: 90vw; max-height: 90vh; 
-        border-radius: 12px; overflow: hidden;
+        border-radius: 12px; overflow: hidden; display: flex; align-items: center; justify-content: center;
     }
     .single-view img {
         max-width: 90vw; max-height: 90vh; border-radius: 12px; 
-        box-shadow: 0 0 50px rgba(0,0,0,0.8); object-fit: contain; display: block;
+        box-shadow: 0 0 50px rgba(0,0,0,0.8); object-fit: contain; cursor: zoom-in;
     }
     
-    /* 悬浮唤出对比的按钮 */
     .toggle-compare-btn {
         position: absolute; left: 20px; bottom: 20px; z-index: 15;
         background: rgba(0,255,213,0.8); color: #000; padding: 10px 20px; 
@@ -65,12 +62,11 @@ st.markdown("""
     }
     .toggle-compare-btn:hover { background: #00ffd5; transform: translateY(-2px); }
     
-    /* 左右对比框容器 (初始隐藏，由原生 input radio 控制显示) */
     .compare-radio { display: none; }
     .compare-view { display: none; }
     
-    .compare-radio:checked ~ .single-view { display: none; } /* 勾选后隐藏单图 */
-    .compare-radio:checked ~ .compare-view { display: flex; } /* 勾选后显示对比框 */
+    .compare-radio:checked ~ .single-view { display: none; } 
+    .compare-radio:checked ~ .compare-view { display: flex; } 
     
     .compare-view {
         position: relative; z-index: 10;
@@ -94,10 +90,112 @@ st.markdown("""
     
     .view-side { flex: 1; display: flex; gap: 2px; background: #111; border-radius: 0 0 12px 12px; overflow: hidden;}
     .side-panel { flex: 1; position: relative; background: #0b0b0b; display: flex; align-items: center; justify-content: center; overflow: hidden;}
-    .side-panel img { width: 100%; height: 100%; object-fit: contain;}
+    .side-panel img { width: 100%; height: 100%; object-fit: contain; cursor: zoom-in; }
     .side-label { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.8); color: #fff; padding: 8px 18px; border-radius: 20px; font-size: 15px; font-weight:bold; border: 1px solid #555; pointer-events: none;}
 </style>
 """, unsafe_allow_html=True)
+
+# 🚀 绝杀黑科技：向浏览器全局注入【滚轮放大】和【按住拖拽】的原生逻辑
+components.html("""
+<script>
+const parentDoc = window.parent.document;
+if (!parentDoc.getElementById('global-zoom-pan')) {
+    const marker = parentDoc.createElement('div');
+    marker.id = 'global-zoom-pan';
+    parentDoc.body.appendChild(marker);
+
+    let isDragging = false;
+    let startX, startY;
+    let activeImg = null;
+
+    // 监听滚轮缩放
+    parentDoc.addEventListener('wheel', function(e) {
+        const img = e.target;
+        if (img.tagName === 'IMG' && (img.closest('.side-panel') || img.closest('.single-view'))) {
+            e.preventDefault();
+            let scale = parseFloat(img.getAttribute('data-scale')) || 1;
+            let tx = parseFloat(img.getAttribute('data-tx')) || 0;
+            let ty = parseFloat(img.getAttribute('data-ty')) || 0;
+            
+            let delta = e.deltaY > 0 ? -0.3 : 0.3; // 缩放速度
+            if (scale === 1 && delta < 0) return; // 不能缩小到1以下
+            
+            if (scale === 1 && delta > 0) {
+                // 初次放大时，将变换中心对准鼠标位置
+                const rect = img.getBoundingClientRect();
+                const x = ((e.clientX - rect.left) / rect.width) * 100;
+                const y = ((e.clientY - rect.top) / rect.height) * 100;
+                img.style.transformOrigin = `${x}% ${y}%`;
+            }
+
+            scale += delta;
+            if (scale <= 1) { scale = 1; tx = 0; ty = 0; img.style.transformOrigin = `center center`; }
+            if (scale > 8) scale = 8; // 最大放大8倍
+
+            img.setAttribute('data-scale', scale);
+            img.setAttribute('data-tx', tx);
+            img.setAttribute('data-ty', ty);
+            
+            img.style.transition = 'transform 0.1s ease-out';
+            img.style.transform = `translate(${tx}px, ${ty}px) scale(${scale})`;
+            img.style.cursor = scale > 1 ? 'grab' : 'zoom-in';
+        }
+    }, {passive: false});
+
+    // 监听按住拖拽
+    parentDoc.addEventListener('mousedown', (e) => {
+        const img = e.target;
+        if (img.tagName === 'IMG' && (img.closest('.side-panel') || img.closest('.single-view'))) {
+            let scale = parseFloat(img.getAttribute('data-scale')) || 1;
+            if (scale > 1) {
+                isDragging = true;
+                activeImg = img;
+                startX = e.clientX - (parseFloat(img.getAttribute('data-tx')) || 0);
+                startY = e.clientY - (parseFloat(img.getAttribute('data-ty')) || 0);
+                img.style.transition = 'none'; // 拖拽时取消动画，防止迟滞
+                img.style.cursor = 'grabbing';
+                e.preventDefault();
+            }
+        }
+    });
+
+    parentDoc.addEventListener('mousemove', (e) => {
+        if (!isDragging || !activeImg) return;
+        let tx = e.clientX - startX;
+        let ty = e.clientY - startY;
+        let scale = parseFloat(activeImg.getAttribute('data-scale')) || 1;
+        
+        activeImg.setAttribute('data-tx', tx);
+        activeImg.setAttribute('data-ty', ty);
+        activeImg.style.transform = `translate(${tx}px, ${ty}px) scale(${scale})`;
+    });
+
+    const stopDrag = () => {
+        if (isDragging && activeImg) {
+            isDragging = false;
+            activeImg.style.cursor = 'grab';
+            activeImg.style.transition = 'transform 0.1s ease-out';
+            activeImg = null;
+        }
+    };
+    parentDoc.addEventListener('mouseup', stopDrag);
+    parentDoc.addEventListener('mouseleave', stopDrag);
+
+    // 关闭模态框时重置图片状态
+    parentDoc.addEventListener('click', function(e) {
+        if (e.target.classList.contains('modal-close-bg') || e.target.classList.contains('close-btn') || e.target.classList.contains('back-btn')) {
+            parentDoc.querySelectorAll('.side-panel img, .single-view img').forEach(img => {
+                img.setAttribute('data-scale', 1);
+                img.setAttribute('data-tx', 0);
+                img.setAttribute('data-ty', 0);
+                img.style.transform = 'translate(0px, 0px) scale(1)';
+                img.style.cursor = 'zoom-in';
+            });
+        }
+    });
+}
+</script>
+""", height=0, width=0)
 
 # ==========================================
 # 1. 常量、数据库与缓存加速引擎
@@ -309,11 +407,12 @@ with col_main:
                 uploaded_b64_urls.append(data_uri) 
                 zoom_id = f"zm_up_{i}" 
                 with p_cols[i % 6]:
-                    # 上传区单图放大 (剔除了被屏蔽的JS)
                     html_str = (
+                        f'<div class="modal-wrapper" style="position:relative;">'
                         f'<label for="{zoom_id}"><img src="{data_uri}" class="result-thumb" style="width:100%; border-radius:8px; cursor:zoom-in;"><div style="text-align:center; font-size:11px; color:#aaa; margin-top:2px;">图 {i+1} (点击放大)</div></label>'
                         f'<input type="checkbox" id="{zoom_id}" class="modal-checkbox">'
                         f'<div class="img-modal-overlay"><label for="{zoom_id}" class="modal-close-bg"></label><div class="single-view"><img src="{data_uri}"></div></div>'
+                        f'</div>'
                     )
                     st.markdown(html_str, unsafe_allow_html=True)
         
@@ -411,32 +510,27 @@ with col_history:
                     for i, url in enumerate(urls):
                         modal_id = f"cb_{str(item['task_id']).replace('-','')}_{i}"
                         
-                        # 🌟 去除被屏蔽的JS，只保留清爽结构
                         if src_urls and i < len(src_urls):
                             before_url = src_urls[i]
                             after_url = url
-                            
                             html_str = (
                                 f'<div class="modal-wrapper" style="position:relative;">'
                                 f'<label for="{modal_id}" style="cursor:zoom-in;display:block;">'
                                 f'<img src="{after_url}" class="result-thumb" style="width:100%;border-radius:8px;box-shadow:0 2px 6px rgba(0,0,0,0.1);">'
-                                f'<div style="text-align:center;font-size:11px;color:#aaa;margin-top:4px;">图 {i+1} (点击查看)</div>'
+                                f'<div style="text-align:center;font-size:11px;color:#aaa;margin-top:4px;">图 {i+1} (点击对比)</div>'
                                 f'</label>'
                                 f'<input type="checkbox" id="{modal_id}" class="modal-checkbox">'
                                 f'<div class="img-modal-overlay">'
                                     f'<label for="{modal_id}" class="modal-close-bg"></label>'
-                                    
                                     f'<input type="checkbox" id="compare_{modal_id}" class="compare-radio">'
-                                    
                                     f'<div class="single-view">'
                                         f'<img src="{after_url}">'
                                         f'<label for="compare_{modal_id}" class="toggle-compare-btn">✨ 左右对比原图</label>'
                                     f'</div>'
-                                    
                                     f'<div class="compare-view">'
                                         f'<div class="compare-header">'
                                             f'<div><label for="compare_{modal_id}" class="back-btn">⬅️ 返回</label></div>'
-                                            f'<span style="color:#fff;font-size:16px;font-weight:bold;">🪟 图像优化对比</span>'
+                                            f'<span style="color:#fff;font-size:16px;font-weight:bold;">🪟 图像优化对比 (滚轮放大，鼠标拖拽)</span>'
                                             f'<label for="{modal_id}" class="close-btn">&times;</label>'
                                         f'</div>'
                                         f'<div class="view-side">'
@@ -444,7 +538,6 @@ with col_history:
                                             f'<div class="side-panel"><img src="{after_url}"><div class="side-label">成品 (After)</div></div>'
                                         f'</div>'
                                     f'</div>'
-                                    
                                 f'</div>'
                                 f'</div>'
                             )
