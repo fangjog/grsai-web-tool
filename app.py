@@ -132,7 +132,7 @@ def pil_to_data_uri(img):
     return f"data:image/jpeg;base64,{base64.b64encode(buffered.getvalue()).decode()}"
 
 # ==========================================
-# 进度展示 (动态阶梯计费版)
+# 进度展示 (动态阶梯计费 + 智能中文报错版)
 # ==========================================
 def show_progress_dialog(task_id, prompt_text, active_user_key, model_used):
     with st.container():
@@ -144,7 +144,6 @@ def show_progress_dialog(task_id, prompt_text, active_user_key, model_used):
     headers = {"Authorization": f"Bearer {GRSAI_API_KEY}", "Content-Type": "application/json"}
     query_url = "https://grsai.dakka.com.cn/v1/draw/result"
     
-    # 🌟 核心：计算单张图的成本
     cost_per_img = MODEL_COSTS.get(model_used, 600)
     
     for i in range(40):
@@ -161,7 +160,6 @@ def show_progress_dialog(task_id, prompt_text, active_user_key, model_used):
                     results = q_res["data"]["results"]
                     num_images = len(results)
                     
-                    # 动态扣减总积分
                     total_cost = num_images * cost_per_img
                     deduct_balance(active_user_key, total_cost)
                     status_text.success(f"✅ **生成成功！(共出 {num_images} 张，已扣除 {total_cost} 积分)**")
@@ -175,7 +173,23 @@ def show_progress_dialog(task_id, prompt_text, active_user_key, model_used):
                     time.sleep(1.5)
                     st.rerun()
                 elif status == "failed":
-                    status_text.error(f"❌ **任务失败:** {q_res['data'].get('failure_reason', '安全审查')}")
+                    # 🌟 智能错误捕获与自动翻译拦截器 🌟
+                    raw_reason = q_res["data"].get("failure_reason", "")
+                    raw_error = q_res["data"].get("error", "")
+                    
+                    # 提取真正的报错信息（优先抓取 error 字段）
+                    actual_err = raw_error if raw_error and raw_error != "error" else raw_reason
+                    
+                    # 常见英文报错本地翻译映射表（后续有新的英文报错，可以直接在这里加）
+                    error_dict = {
+                        "The current model has a high load, please use another model": "当前模型并发排队拥挤，请稍后再试，或切换至 VIP 模型",
+                        "error": "云端生成异常或触发安全审查，请调整提示词"
+                    }
+                    
+                    # 匹配翻译，如果没有匹配到，就显示原英文
+                    cn_error = error_dict.get(actual_err, f"系统异常: {actual_err}")
+                    
+                    status_text.error(f"❌ **任务失败:** {cn_error} (失败不扣除积分)")
                     for t in st.session_state.tasks:
                         if t['task_id'] == task_id: t['status'] = 'failed'
                     clean_and_get_tasks(active_user_key)
