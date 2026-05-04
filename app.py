@@ -15,7 +15,7 @@ import pytz
 # ==========================================
 # 0. 网页基础配置与全局 CSS
 # ==========================================
-st.set_page_config(page_title="AI Pro Studio V6.36", page_icon="🚀", layout="wide", initial_sidebar_state="auto")
+st.set_page_config(page_title="AI Pro Studio V6.37", page_icon="🚀", layout="wide", initial_sidebar_state="auto")
 
 st.markdown("""
 <style>
@@ -33,20 +33,20 @@ st.markdown("""
     }
     .result-thumb:hover { transform: scale(1.02); box-shadow: 0 6px 16px rgba(0,0,0,0.2); }
     
-    /* 遮罩与全屏布局 */
+    /* 遮罩与全屏布局 (改为 DIV 防止 HTML 解析错误) */
     .img-modal-overlay {
         display: none; position: fixed; z-index: 999999; top: 0; left: 0; 
         width: 100vw; height: 100vh; align-items: center; justify-content: center; 
     }
     .modal-checkbox:checked + .img-modal-overlay { display: flex; }
     
-    /* 点击背景关闭 */
+    /* 点击背景关闭 (设在最底层 z-index: 1) */
     .modal-close-bg {
         position: absolute; top:0; left:0; width:100%; height:100%; 
-        background: rgba(0,0,0,0.9); cursor: zoom-out;
+        background: rgba(0,0,0,0.9); cursor: zoom-out; z-index: 1;
     }
     
-    /* 🌟 高级对比工作台容器 */
+    /* 🌟 高级对比工作台容器 (设在顶层 z-index: 10) */
     .compare-wrapper {
         position: relative; z-index: 10;
         width: 85vw; max-width: 1400px; height: 85vh; 
@@ -55,6 +55,16 @@ st.markdown("""
         box-shadow: 0 0 50px rgba(0,0,0,0.8);
         border: 1px solid #444;
     }
+    
+    /* === 纯 CSS Tab 切换黑科技 (免疫 Streamlit 屏蔽 JS) === */
+    .tab-radio { display: none; }
+    .view-swipe, .view-side { display: none; }
+    
+    .swipe-radio:checked ~ .view-swipe { display: block; }
+    .side-radio:checked ~ .view-side { display: flex; }
+    
+    .swipe-radio:checked ~ .compare-header .btn-swipe { background: #00ffd5; color: #000; border-color: #00ffd5; }
+    .side-radio:checked ~ .compare-header .btn-side { background: #00ffd5; color: #000; border-color: #00ffd5; }
     
     /* 顶部控制栏 */
     .compare-header {
@@ -65,22 +75,24 @@ st.markdown("""
     .mode-btn {
         background: #444; color: #fff; border: 1px solid #555; padding: 6px 16px; 
         border-radius: 6px; cursor: pointer; margin-right: 10px; transition: 0.2s; font-weight: bold;
+        display: inline-block;
     }
-    .mode-btn:hover { background: #00ffd5; color: #000; border-color: #00ffd5;}
-    .close-btn { color: #aaa; font-size: 28px; cursor: pointer; font-weight: bold; margin-left: 15px; }
+    .mode-btn:hover { background: #555; }
+    .close-btn { color: #aaa; font-size: 28px; cursor: pointer; font-weight: bold; margin-left: 15px; display: inline-block; line-height: 1;}
     .close-btn:hover { color: #ff4b4b; }
     
-    /* 视图区域 (确保图片按比例缩放，不拉伸，不撑爆) */
+    /* 视图区域 */
     .view-swipe {
         position: relative; flex: 1; overflow: hidden; background: #0b0b0b; border-radius: 0 0 12px 12px;
     }
     .view-side {
-        flex: 1; display: flex; gap: 2px; background: #111; overflow: hidden; border-radius: 0 0 12px 12px;
+        flex: 1; gap: 2px; background: #111; overflow: hidden; border-radius: 0 0 12px 12px;
     }
     .img-base, .img-clip {
         position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
         object-fit: contain; pointer-events: none;
     }
+    .img-clip { clip-path: polygon(50% 0, 100% 0, 100% 100%, 50% 100%); transition: clip-path 0.1s ease-out; }
     
     /* 左右对比模式的面版 */
     .side-panel {
@@ -324,16 +336,17 @@ with col_main:
                 uploaded_b64_urls.append(data_uri) 
                 zoom_id = f"zm_up_{i}" 
                 with p_cols[i % 6]:
+                    # 🌟 修复：预览图弹窗也改为纯净DIV，防止黑屏
                     st.markdown(f'''
                         <label for="{zoom_id}">
                             <img src="{data_uri}" class="result-thumb" style="width:100%; border-radius:8px; cursor:zoom-in;">
                             <div style="text-align:center; font-size:11px; color:#aaa; margin-top:2px;">图 {i+1}</div>
                         </label>
                         <input type="checkbox" id="{zoom_id}" class="modal-checkbox">
-                        <label for="{zoom_id}" class="img-modal-overlay">
+                        <div class="img-modal-overlay">
                             <label for="{zoom_id}" class="modal-close-bg"></label>
                             <div class="single-img-container"><img src="{data_uri}"></div>
-                        </label>
+                        </div>
                     ''', unsafe_allow_html=True)
         
         canvas_result = None
@@ -431,7 +444,7 @@ with col_history:
                     for i, url in enumerate(urls):
                         modal_id = f"cb_{str(item['task_id']).replace('-','')}_{i}"
                         
-                        # 🌟 渲染高级对比控制台 (内联 JS 切换显示)
+                        # 🌟 修复：渲染高级对比控制台 (使用纯净层级和纯 CSS TABS 黑科技)
                         if src_urls and i < len(src_urls):
                             before_url = src_urls[i]
                             after_url = url
@@ -439,30 +452,33 @@ with col_history:
                             imgs_html += f'''
                                 <label for="{modal_id}"><img src="{after_url}" class="result-thumb"></label>
                                 <input type="checkbox" id="{modal_id}" class="modal-checkbox">
-                                <label for="{modal_id}" class="img-modal-overlay">
+                                <div class="img-modal-overlay">
                                     <label for="{modal_id}" class="modal-close-bg"></label>
                                     
-                                    <div class="compare-wrapper" onclick="event.stopPropagation();">
+                                    <div class="compare-wrapper">
+                                        <input type="radio" name="tab_{modal_id}" id="swipe_{modal_id}" class="tab-radio swipe-radio" checked>
+                                        <input type="radio" name="tab_{modal_id}" id="side_{modal_id}" class="tab-radio side-radio">
+                                        
                                         <div class="compare-header">
                                             <span style="color:#fff; font-size:16px; font-weight:bold;">🖼️ 图像优化对比</span>
                                             <div>
-                                                <button class="mode-btn" onclick="document.getElementById('swipe_{modal_id}').style.display='block'; document.getElementById('side_{modal_id}').style.display='none';">🖱️ 划动对比</button>
-                                                <button class="mode-btn" onclick="document.getElementById('swipe_{modal_id}').style.display='none'; document.getElementById('side_{modal_id}').style.display='flex';">🪟 左右对比</button>
+                                                <label for="swipe_{modal_id}" class="mode-btn btn-swipe">🖱️ 划动对比</label>
+                                                <label for="side_{modal_id}" class="mode-btn btn-side">🪟 左右对比</label>
                                                 <label for="{modal_id}" class="close-btn">&times;</label>
                                             </div>
                                         </div>
                                         
-                                        <div id="swipe_{modal_id}" class="view-swipe">
+                                        <div class="view-swipe">
                                             <img src="{before_url}" class="img-base">
                                             <div class="badge-before">原图 (Before)</div>
                                             
-                                            <img src="{after_url}" class="img-clip" id="clip_{modal_id}" style="clip-path: polygon(50% 0, 100% 0, 100% 100%, 50% 100%);">
+                                            <img src="{after_url}" class="img-clip" id="clip_{modal_id}">
                                             <div class="badge-after">成品 (After)</div>
                                             
                                             <input type="range" min="0" max="100" value="50" class="compare-slider" oninput="document.getElementById('clip_{modal_id}').style.clipPath = 'polygon(' + this.value + '% 0, 100% 0, 100% 100%, ' + this.value + '% 100%)'">
                                         </div>
                                         
-                                        <div id="side_{modal_id}" class="view-side" style="display:none;">
+                                        <div class="view-side">
                                             <div class="side-panel">
                                                 <img src="{before_url}">
                                                 <div class="side-label">原图 (Before)</div>
@@ -473,17 +489,17 @@ with col_history:
                                             </div>
                                         </div>
                                     </div>
-                                </label>
+                                </div>
                             '''
                         else:
-                            # 普通图片单图居中放大模式
+                            # 🌟 修复：普通单图放大模式也改为纯净DIV，防止黑屏
                             imgs_html += f'''
                                 <label for="{modal_id}"><img src="{url}" class="result-thumb"></label>
                                 <input type="checkbox" id="{modal_id}" class="modal-checkbox">
-                                <label for="{modal_id}" class="img-modal-overlay">
+                                <div class="img-modal-overlay">
                                     <label for="{modal_id}" class="modal-close-bg"></label>
                                     <div class="single-img-container"><img src="{url}"></div>
-                                </label>
+                                </div>
                             '''
                             
                     st.markdown(imgs_html, unsafe_allow_html=True)
