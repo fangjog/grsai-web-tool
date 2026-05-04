@@ -156,48 +156,50 @@ def auto_poll_task(task_id, active_user_key, model_used, start_time):
     placeholder = st.empty()
     headers = {"Authorization": f"Bearer {GRSAI_API_KEY}", "Content-Type": "application/json"}
     query_url = "https://grsai.dakka.com.cn/v1/draw/result"
-    cost_per_img = MODEL_COSTS.get(model_used, 600)
     
-    for i in range(40):
-        elapsed_time = time.time() - start_time
-        p = min(5 + int(elapsed_time), 95) 
-        html_bar = f'<div style="background-color: #1a1a1a; border-radius: 10px; padding: 4px; border: 1px solid #333;"><div style="height: 14px; border-radius: 6px; background: linear-gradient(90deg, #00c2ff, #00ffd5); width: {p}%; transition: width 0.5s ease-in-out; box-shadow: 0 0 10px #00ffd5;"></div></div><div style="text-align: right; color: #00ffd5; font-size: 13px; font-weight: bold; margin-top: 6px; font-family: monospace;">⚡ 云端算力注入中... {p}%</div>'
-        placeholder.markdown(html_bar, unsafe_allow_html=True)
+    for i in range(60):
+        # 1. 计算进度并渲染进度条
+        p = min(5 + int(time.time() - start_time), 95)
+        placeholder.markdown(f'<div style="background:#111;border-radius:10px;padding:4px;border:1px solid #333;"><div style="height:12px;border-radius:6px;background:linear-gradient(90deg,#00c2ff,#00ffd5);width:{p}%;"></div></div><div style="text-align:right;color:#00ffd5;font-size:12px;margin-top:4px;">⚡ 生成中... {p}%</div>', unsafe_allow_html=True)
         
         try:
-            q_res = requests.post(query_url, headers=headers, json={"id": task_id}, verify=False).json()
-            if q_res.get("code") == 0:
-                status = q_res["data"]["status"]
-                if status == "succeeded":
-                    results = q_res["data"]["results"]
-                    urls = [img["url"] for img in results]
+            resp = requests.post(query_url, headers=headers, json={"id": task_id}, verify=False, timeout=15)
+            q_res = parse_api_response(resp.text) 
+            
+            if q_res:
+                status = ""
+                urls = []
+                # 兼容不同格式
+                if q_res.get("code") == 0 and "data" in q_res:
+                    status = q_res["data"].get("status")
+                    urls = [img.get("url") for img in q_res["data"].get("results", []) if img.get("url")]
+                elif "status" in q_res:
+                    status = q_res.get("status")
+                    urls = [img.get("url") for img in q_res.get("results", []) if img.get("url")] if "results" in q_res else ([q_res.get("url")] if q_res.get("url") else [])
+
+                if status == "succeeded" and urls:
+                    # 🌟 关键修复 1：成功后先渲染最终 UI 占位
+                    placeholder.markdown(f'<div style="background:#111;border-radius:10px;padding:4px;border:1px solid #333;"><div style="height:12px;border-radius:6px;background:linear-gradient(90deg,#00ff88,#00c2ff);width:100%;"></div></div><div style="text-align:right;color:#00ff88;font-size:12px;margin-top:4px;">✅ 绘制完成！</div>', unsafe_allow_html=True)
                     
-                    imgs_html = ""
-                    for idx, url in enumerate(urls):
-                        modal_id = f"cb_{str(task_id).replace('-','')}_{idx}"
-                        imgs_html += f'<label for="{modal_id}"><img src="{url}" class="result-thumb" style="border: 2px solid #00ff88; box-shadow: 0 0 20px rgba(0,255,136,0.2); margin-top: 10px;"></label><input type="checkbox" id="{modal_id}" class="modal-checkbox"><label for="{modal_id}" class="img-modal-overlay"><img src="{url}"></label>'
+                    # 🌟 关键修复 2：扣费与更新数据库
+                    deduct_balance(active_user_key, MODEL_COSTS.get(model_used, 600))
+                    sync_task_to_db({"task_id": task_id, "status": "succeeded", "urls": [urls[0]], "is_deducted": True}, active_user_key)
                     
-                    full_bar = f'<div style="background-color: #1a1a1a; border-radius: 10px; padding: 4px; border: 1px solid #333;"><div style="height: 14px; border-radius: 6px; background: linear-gradient(90deg, #00ff88, #00c2ff); width: 100%; box-shadow: 0 0 10px #00ff88;"></div></div><div style="text-align: right; color: #00ff88; font-size: 13px; font-weight: bold; margin-top: 6px; font-family: monospace;">✅ 绘制完成！</div>{imgs_html}'
-                    placeholder.markdown(full_bar, unsafe_allow_html=True)
-                    
-                    for t in st.session_state.tasks:
-                        if t['task_id'] == task_id:
-                            deduct_balance(active_user_key, len(results) * cost_per_img)
-                            t.update({"status": "succeeded", "urls": urls})
-                    
-                    clean_and_get_tasks(active_user_key); time.sleep(1.5); st.rerun(); return 
+                    time.sleep(1.5) # 给用户看一眼“绘制完成”的机会
+                    st.rerun() # 🌟 关键修复 3：rerun 必须在 try 块内成功执行并跳出
+                    return 
+
                 elif status == "failed":
-                    error_dict = {
-                        "The current model has a high load, please use another model": "当前模型并发拥挤，请稍后再试",
-                        "error": "触发安全审查：请修改提示词或更换垫图"
-                    }
-                    cn_error = error_dict.get(q_res["data"].get("failure_reason", q_res["data"].get("error")), f"系统异常: {q_res['data'].get('error')}")
-                    for t in st.session_state.tasks:
-                        if t['task_id'] == task_id: t.update({"status": "failed", "reason": cn_error})
-                    clean_and_get_tasks(active_user_key); st.rerun(); return
-        except: pass
+                    sync_task_to_db({"task_id": task_id, "status": "failed"}, active_user_key)
+                    st.rerun()
+                    return
+
+        except Exception as e:
+            # 🌟 关键修复 4：不要用 naked except! 
+            # 这样只捕获真正的网络错误，不会拦截 Streamlit 的刷新指令 (RerunException)
+            pass
+            
         time.sleep(3)
-    st.rerun()
 
 # ==========================================
 # 4. 主界面
