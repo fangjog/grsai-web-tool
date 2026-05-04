@@ -16,7 +16,7 @@ import pytz
 # ==========================================
 # 0. 网页基础配置与全局 CSS
 # ==========================================
-st.set_page_config(page_title="AI Pro Studio V6.46", page_icon="🚀", layout="wide", initial_sidebar_state="auto")
+st.set_page_config(page_title="AI Pro Studio V6.47", page_icon="🚀", layout="wide", initial_sidebar_state="auto")
 
 st.markdown("""
 <style>
@@ -316,16 +316,20 @@ clean_api_name = (card_info.get('api_secret_name') or "API_VIP888").strip("'").s
 GRSAI_API_KEY = st.secrets.get(clean_api_name, "")
 
 # ==========================================
-# 3. 自动轮询 
+# 3. 自动轮询 (究极耐心抗压版)
 # ==========================================
 def auto_poll_task(task_id, active_user_key, model_used, start_time, src_urls=None):
     placeholder = st.empty()
     headers = {"Authorization": f"Bearer {GRSAI_API_KEY}", "Content-Type": "application/json"}
     query_url = "https://grsai.dakka.com.cn/v1/draw/result"
     
-    for i in range(90):
-        p = min(5 + int((time.time() - start_time) * 1.5), 98) 
-        placeholder.markdown(f'<div style="background:#111;border-radius:10px;padding:4px;border:1px solid #333;"><div style="height:12px;border-radius:6px;background:linear-gradient(90deg,#00c2ff,#00ffd5);width:{p}%;"></div></div><div style="text-align:right;color:#00ffd5;font-size:12px;margin-top:4px;">⚡ 生成中... {p}%</div>', unsafe_allow_html=True)
+    # 🌟 修复：将前端轮询次数从 90 次提升至 300 次，每次间隔 3 秒，总共可等待长达 15 分钟！
+    for i in range(300):
+        # 🌟 进度条计算公式调慢，0.2 的系数意味着需要 465 秒才会涨到 98%，避免早早定格
+        p = min(5 + int((time.time() - start_time) * 0.2), 98) 
+        
+        # 提示词增加安抚信息
+        placeholder.markdown(f'<div style="background:#111;border-radius:10px;padding:4px;border:1px solid #333;"><div style="height:12px;border-radius:6px;background:linear-gradient(90deg,#00c2ff,#00ffd5);width:{p}%;"></div></div><div style="text-align:right;color:#00ffd5;font-size:12px;margin-top:4px;">⚡ 正在排队/生成中... {p}% (耗时较长请耐心等待)</div>', unsafe_allow_html=True)
         try:
             resp = requests.post(query_url, headers=headers, json={"id": task_id}, verify=False, timeout=10)
             q_res = parse_api_response(resp.text) 
@@ -349,7 +353,9 @@ def auto_poll_task(task_id, active_user_key, model_used, start_time, src_urls=No
                     sync_task_to_db({"task_id": task_id, "status": "failed"}, active_user_key)
                     st.rerun(); return
         except Exception as e: pass
-        time.sleep(2)
+        
+        # 每次等待 3 秒，既不给服务器太大压力，也能撑够 15 分钟
+        time.sleep(3)
 
 # ==========================================
 # 4. 主界面
