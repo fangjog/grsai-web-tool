@@ -238,29 +238,25 @@ with col_main:
         zoom_html_modals = ""
         
         if uploaded_files:
-            # 🌟 修复：启用上传预览图丝滑放大功能
-            cols = st.columns(6) 
+            # 🌟 核心修复：直接使用 st.columns 在循环中分段渲染，杜绝源码泄露
+            p_cols = st.columns(6) 
             for i, file in enumerate(uploaded_files):
-                img = Image.open(io.BytesIO(file.getvalue()))
-                data_uri = pil_to_data_uri(img)
+                img_bytes = file.getvalue()
+                data_uri = pil_to_data_uri(Image.open(io.BytesIO(img_bytes)))
                 zoom_id = f"zm_up_{i}" # 唯一锚点 ID
                 
-                # 生成缩略图 HTML
-                preview_html += f"""
-                <div style="display:inline-block; width:15%; margin:5px; text-align:center;">
-                    <label for="{zoom_id}">
-                        <img src="{data_uri}" class="result-thumb" style="width:100%; border-radius:8px; cursor:zoom-in;">
-                        <span style="font-size:11px; color:#aaa;">图 {i+1}</span>
-                    </label>
-                </div>
-                """
-                # 生成隐藏的放大模态框 HTML
-                zoom_html_modals += f"""
-                <input type="checkbox" id="{zoom_id}" class="modal-checkbox">
-                <label for="{zoom_id}" class="img-modal-overlay">
-                    <img src="{data_uri}">
-                </label>
-                """
+                with p_cols[i % 6]:
+                    # 每一张图都是一个独立的独立 HTML 块，压力极小，100% 渲染成功
+                    st.markdown(f'''
+                        <label for="{zoom_id}">
+                            <img src="{data_uri}" class="result-thumb" style="width:100%; border-radius:8px; cursor:zoom-in;">
+                            <div style="text-align:center; font-size:11px; color:#aaa; margin-top:2px;">图 {i+1}</div>
+                        </label>
+                        <input type="checkbox" id="{zoom_id}" class="modal-checkbox">
+                        <label for="{zoom_id}" class="img-modal-overlay">
+                            <img src="{data_uri}">
+                        </label>
+                    ''', unsafe_allow_html=True)
                 
             # 渲染缩略图预览
             st.markdown(f'<div style="margin-top:10px;">{preview_html}</div>', unsafe_allow_html=True)
