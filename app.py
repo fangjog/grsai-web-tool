@@ -14,7 +14,7 @@ from supabase import create_client, Client
 # ==========================================
 # 0. 网页基础配置
 # ==========================================
-st.set_page_config(page_title="AI Pro Studio V6.12", page_icon="🚀", layout="wide", initial_sidebar_state="auto")
+st.set_page_config(page_title="AI Pro Studio V6.13", page_icon="🚀", layout="wide", initial_sidebar_state="auto")
 
 st.markdown("""
 <style>
@@ -28,15 +28,26 @@ st.markdown("""
     .stButton > button:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
     [data-testid="stHorizontalBlock"] > div { min-width: 80px !important; }
     
-    /* 🌟 核心 V6.9 修复：让所有原生图片都拥有高级悬浮特效，同时保留其原生的原网页遮罩全屏放大功能 🌟 */
-    [data-testid="stImage"] img {
-        border-radius: 8px !important;
-        transition: transform 0.2s ease-in-out !important;
-        box-shadow: 0 2px 6px rgba(0,0,0,0.1) !important;
-        cursor: zoom-in !important; /* 点击原网页放大观感 */
+    /* 🌟 HTML 模态框核心 CSS (彻底抛弃原生图片限制，实现点击任意位置放大) */
+    .result-thumb {
+        width: 100%; border-radius: 8px; cursor: zoom-in; 
+        transition: transform 0.2s ease-in-out; 
+        box-shadow: 0 2px 6px rgba(0,0,0,0.1); margin-bottom: 8px;
     }
-    [data-testid="stImage"]:hover img {
-        transform: scale(1.02) !important;
+    .result-thumb:hover { transform: scale(1.02); box-shadow: 0 6px 16px rgba(0,0,0,0.2); }
+
+    .img-modal-overlay {
+        display: none; position: fixed; z-index: 99999; top: 0; left: 0; 
+        width: 100%; height: 100%; background-color: rgba(0,0,0,0.9); 
+        align-items: center; justify-content: center; opacity: 0; transition: opacity 0.3s;
+        cursor: zoom-out; 
+    }
+    .img-modal-overlay:target { display: flex; opacity: 1; }
+
+    .img-modal-overlay img {
+        max-width: 95%; max-height: 95%; border-radius: 12px; 
+        box-shadow: 0 0 40px rgba(0,194,255,0.3); border: 1px solid rgba(0,194,255,0.2); 
+        cursor: zoom-out; 
     }
 </style>
 """, unsafe_allow_html=True)
@@ -52,18 +63,15 @@ except Exception as e:
     st.error("❌ 数据库连接失败，请检查 Secrets 配置。")
     st.stop()
 
-# V6.5 动态模型定价表
-MODEL_COSTS = {
-    "gpt-image-2": 600,
-    "gpt-image-2-vip": 900
-}
-
+MODEL_COSTS = {"gpt-image-2": 600, "gpt-image-2-vip": 900}
 TASKS_FILE = "tasks_history.json"
 
-# 🌟 修复 V6.11 中的语法手抖错误 🌟
+# 提取全局选项配置，防止跨模式报错
+ratio_opts = ["auto", "1:1", "3:2", "2:3", "16:9", "9:16", "5:4", "4:5", "4:3", "3:4", "21:9", "9:21", "1:3", "3:1", "2:1", "1:2", "自定义像素"]
+quality_opts = ["auto", "high", "medium", "low"]
+
 def load_json(path, default=None):
-    if default is None:
-        default = {}
+    if default is None: default = {}
     if os.path.exists(path):
         try:
             with open(path, "r", encoding="utf-8") as f: return json.load(f)
@@ -91,7 +99,7 @@ def deduct_balance(card_key, amount):
     except: pass
 
 # ==========================================
-# 2. 居中拦截式身份验证 (V6.2)
+# 2. 居中拦截式身份验证
 # ==========================================
 query_key = st.query_params.get("key", "")
 card_info = get_card_info(query_key) if query_key else None
@@ -117,7 +125,7 @@ clean_api_name = (card_info.get('api_secret_name') or "API_VIP888").strip("'").s
 GRSAI_API_KEY = st.secrets.get(clean_api_name, "")
 
 # ==========================================
-# 3. 任务队列隔离 (V6.3)
+# 3. 任务队列隔离
 # ==========================================
 all_history = load_json(TASKS_FILE, default={})
 if isinstance(all_history, list): all_history = {}
@@ -146,7 +154,7 @@ def pil_to_data_uri(img):
     return f"data:image/jpeg;base64,{base64.b64encode(buffered.getvalue()).decode()}"
 
 # ==========================================
-# V6.10 自动轮询 + 时间锚定充电条 (修复跳来跳去)
+# 自动轮询与炫酷动态充电条
 # ==========================================
 def auto_poll_task(task_id, active_user_key, model_used, start_time):
     placeholder = st.empty()
@@ -155,9 +163,8 @@ def auto_poll_task(task_id, active_user_key, model_used, start_time):
     cost_per_img = MODEL_COSTS.get(model_used, 600)
     
     for i in range(40):
-        # 🌟 V6.10 修复 1：根据任务真实的已消耗时间来计算进度，彻底杜绝刷新回退跳乱跳！
         elapsed_time = time.time() - start_time
-        p = min(5 + int(elapsed_time), 95) # 起步5%，每过1秒涨1%，最高停在95%
+        p = min(5 + int(elapsed_time), 95) 
         
         html_bar = f"""<div style="background-color: #1a1a1a; border-radius: 10px; padding: 4px; box-shadow: inset 0 1px 3px rgba(0,0,0,0.5); border: 1px solid #333;"><div style="height: 14px; border-radius: 6px; background: linear-gradient(90deg, #00c2ff, #00ffd5); width: {p}%; transition: width 0.5s ease-in-out; box-shadow: 0 0 10px #00ffd5;"></div></div><div style="text-align: right; color: #00ffd5; font-size: 13px; font-weight: bold; margin-top: 6px; font-family: monospace;">⚡ 云端算力注入中... {p}%</div>"""
         placeholder.markdown(html_bar, unsafe_allow_html=True)
@@ -171,40 +178,42 @@ def auto_poll_task(task_id, active_user_key, model_used, start_time):
                     results = q_res["data"]["results"]
                     urls = [img["url"] for img in results]
                     
-                    # V6.10 修复 2：在绿色框渲染原图前，先把充电条也换成绿色充满状态
                     html_bar_succeeded = html_bar.replace(f"width: {p}%", "width: 100%").replace(f"{p}%", "100%").replace("background: linear-gradient(90deg, #00c2ff, #00ffd5)", "background: linear-gradient(90deg, #00ff88, #00c2ff)").replace("#00c2ff", "#00ff88").replace("云端算力注入中...", "✅ 绘制完成！").replace("box-shadow: 0 0 10px #00ffd5;", "box-shadow: 0 0 10px #00ff88;")
-                    # 瞬间渲染绿色荧光边框原图，零延迟
-                    imgs_html = "".join([f'<img src="{url}" class="result-thumb" style="border: 2px solid #00ff88; box-shadow: 0 0 20px rgba(0,255,136,0.2); transition: scale(1.02);">' for url in urls])
                     
-                    # 瞬间充满
+                    # 🌟 修复：瞬间出图也支持 HTML 锚点模态框放大
+                    imgs_html = ""
+                    for idx, url in enumerate(urls):
+                        modal_id = f"modal_poll_{task_id}_{idx}"
+                        imgs_html += f"""
+                        <a href="#{modal_id}"><img src="{url}" class="result-thumb" style="border: 2px solid #00ff88; box-shadow: 0 0 20px rgba(0,255,136,0.2);"></a>
+                        <a href="#!" class="img-modal-overlay" id="{modal_id}"><img src="{url}"></a>
+                        """
+                    
                     placeholder.markdown(f"{progress_bar_reset_css}{html_bar_succeeded}{imgs_html}", unsafe_allow_html=True)
                     
-                    # 动态阶梯扣费
                     num_images = len(results)
                     total_cost = num_images * cost_per_img
                     deduct_balance(active_user_key, total_cost)
                     
                     for t in st.session_state.tasks:
                         if t['task_id'] == task_id:
-                            # V6.7 防重扣安全锁
                             t['status'] = 'succeeded'
                             t['urls'] = urls
-                            t['is_deducted'] = True # 标记已扣款
+                            t['is_deducted'] = True 
                     clean_and_get_tasks(active_user_key)
                     
-                    time.sleep(1.5) # 酷炫效果看清 1.5 秒
+                    time.sleep(1.5) 
                     st.rerun()
                     return 
                     
                 elif status == "failed":
-                    # V6.6 智能错误捕获与自动翻译拦截器
                     raw_reason = q_res["data"].get("failure_reason", "")
                     raw_error = q_res["data"].get("error", "")
                     actual_err = raw_error if raw_error and raw_error != "error" else raw_reason
                     
                     error_dict = {
                         "The current model has a high load, please use another model": "当前模型并发排队拥挤，请稍后再试，或切换至 VIP 模型",
-                        "We are sorry, but the images we created may have violated our relevant policies. If you think we made a mistake, please try again or edit your prompt.": "❌ 触发安全审查：生成的内容疑似包含违禁元素，请修改提示词后重试",
+                        "We are sorry, but the images we created may have violated our relevant policies. If you think we made a mistake, please try again or edit your prompt.": "❌ 触发安全审查：生成的内容疑似包含违禁元素",
                         "error": "云端生成异常或触发安全审查，请调整提示词"
                     }
                     cn_error = error_dict.get(actual_err, f"系统异常: {actual_err}")
@@ -212,13 +221,12 @@ def auto_poll_task(task_id, active_user_key, model_used, start_time):
                     for t in st.session_state.tasks:
                         if t['task_id'] == task_id: 
                             t['status'] = 'failed'
-                            t['reason'] = cn_error # 把翻译后的中文原因存入历史记录
+                            t['reason'] = cn_error 
                     clean_and_get_tasks(active_user_key)
                     st.rerun()
         except: pass
         time.sleep(3)
         
-    # 如果超时了
     for t in st.session_state.tasks:
         if t['task_id'] == task_id and t['status'] == 'running':
             t['status'] = 'failed'
@@ -245,23 +253,12 @@ st.title("🚀 AI Pro Studio")
 col_main, col_history = st.columns([7, 3])
 
 with col_main:
-    # V6.4 模型切换功能
     selected_model = st.selectbox("🤖 选择创作模型", ["gpt-image-2", "gpt-image-2-vip"], help="VIP模型支持更高分辨率和更强细节")
     
+    # 🌟 修复：无论哪种模式，参数设置模块保持绝对一致
     if menu == "✍️ 文生图":
         prompt_txt = st.text_area("输入画面详细描述", height=120, placeholder="赛博朋克繁华都市，雨夜，霓虹灯...")
-        c1, c2 = st.columns(2)
-        with c1: 
-            # V6.4 画幅比例升级
-            ratio_opts = ["auto", "1:1", "3:2", "2:3", "16:9", "9:16", "5:4", "4:5", "4:3", "3:4", "21:9", "9:21", "1:3", "3:1", "2:1", "1:2", "自定义像素"]
-            aspect_ratio = st.selectbox("📏 画幅比例", ratio_opts)
-            custom_size = ""
-            if aspect_ratio == "自定义像素":
-                custom_size = st.text_input("输入像素值 (例如: 1024x1024)", placeholder="WxH")
-        with c2: quality = st.selectbox("💎 图片质量", quality_opts := ["auto", "high", "medium", "low"], key="quality_v")
-        btn_submit = st.button("✨ 立即生成", type="primary", use_container_width=True)
-        
-    else: 
+    else:
         st.markdown("#### 🖼️ 图生图模式")
         uploaded_files = st.file_uploader("📤 上传参考图", type=["png", "jpg"], accept_multiple_files=True)
         if uploaded_files:
@@ -269,18 +266,25 @@ with col_main:
             cols = st.columns(6) 
             for i, file in enumerate(uploaded_files):
                 img_preview = Image.open(io.BytesIO(file.getvalue()))
-                # V6.9 修复 Bug：统一用全局 CSS 控制的原生图片组件，解决放大体验冲突
                 cols[i % 6].image(img_preview, caption=f"图 {i+1}", use_container_width=True)
             st.markdown("<br>", unsafe_allow_html=True)
-        
         canvas_result = None
         if not uploaded_files:
             st.info("💡 提示：在下方涂鸦也可作为生成参考。")
             canvas_result = st_canvas(fill_color="rgba(255,165,0,0.3)", stroke_width=3, stroke_color="#000", background_color="#fff", height=300, key="cvs")
-            
         prompt_txt = st.text_area("指令/修改描述", height=80, placeholder="保持风格，背景换成森林...")
-        with st.columns(2)[0]: quality = st.selectbox("💎 图片质量", quality_opts, key="quality_i")
-        btn_submit = st.button("🚀 开始垫图生成", type="primary", use_container_width=True)
+
+    # 共同的参数面板 (保证文生图和图生图的参数完全一致)
+    c1, c2 = st.columns(2)
+    with c1: 
+        aspect_ratio = st.selectbox("📏 画幅比例", ratio_opts, key=f"ratio_{menu}")
+        custom_size = ""
+        if aspect_ratio == "自定义像素":
+            custom_size = st.text_input("输入像素值 (例如: 1024x1024)", placeholder="WxH", key=f"custom_{menu}")
+    with c2: 
+        quality = st.selectbox("💎 图片质量", quality_opts, key=f"quality_{menu}")
+    
+    btn_submit = st.button(f"✨ 立即生成 ({menu.split(' ')[1]})", type="primary", use_container_width=True)
 
     if btn_submit:
         required_points = MODEL_COSTS.get(selected_model, 600)
@@ -288,9 +292,16 @@ with col_main:
             st.error(f"❌ 额度不足，当前模型需要 {required_points} 积分。")
         elif not prompt_txt and menu == "✍️ 文生图": st.error("❌ 请输入提示词！")
         else:
-            payload = {"model": selected_model, "prompt": prompt_txt, "webHook": "-1", "shutProgress": True}
+            final_ratio = custom_size if aspect_ratio == "自定义像素" else aspect_ratio
+            payload = {
+                "model": selected_model, 
+                "prompt": prompt_txt, 
+                "webHook": "-1", 
+                "shutProgress": True,
+                "aspectRatio": final_ratio,
+                "quality": quality
+            }
             
-            # 🌟 V6.10 修复 Bug：严格隔离图生图逻辑，防止 aspectRatio 未定义
             if menu == "🖼️ 图生图":
                 urls = []
                 if uploaded_files:
@@ -300,21 +311,12 @@ with col_main:
                 
                 if not urls: st.error("⚠️ 请提供参考图。"); st.stop()
                 payload["urls"] = urls
-                payload["quality"] = quality
-            else:
-                # 文生图专有逻辑
-                final_ratio = custom_size if aspect_ratio == "自定义像素" else aspect_ratio
-                payload["aspectRatio"] = final_ratio
-                payload["quality"] = quality
 
             headers = {"Authorization": f"Bearer {GRSAI_API_KEY}", "Content-Type": "application/json"}
-            
-            # 🌟 V6.10 修复 Bug：将网络请求与页面刷新彻底分离，防止 rerun() 被 except 拦截误报异常
             sub_res = None
             try:
                 sub_res = requests.post("https://grsai.dakka.com.cn/v1/draw/completions", headers=headers, json=payload, verify=False).json()
             except Exception as e:
-                # 📡 V6.10 修复：只有连不上网时才显示，rerunException 不会到这里
                 st.error("📡 网络连接异常，无法发起任务，请检查网络环境或稍后重试。")
                 
             if sub_res:
@@ -333,29 +335,36 @@ with col_history:
     else:
         with st.container(height=700):
             for item in reversed(tasks_list):
-                # V6.8 截断提示词+复制功能
                 model_used_badge = "👑 VIP" if item.get('model') == 'gpt-image-2-vip' else "普"
                 prompt_text = item.get('prompt', '')
                 short_prompt = prompt_text[:10] + "..." if len(prompt_text) > 10 else prompt_text
                 
-                # 时间+模型+截断提示词
                 st.markdown(f"**[{item['time_str']}]** `{model_used_badge}` 💡 {short_prompt}")
                 
                 with st.expander("📋 展开复制完整提示词"):
                     st.code(prompt_text, language="text")
 
                 if item.get('status') == 'running':
-                    # 🌟 V6.10 修复 Bug：只要状态是 running，刷新后自动重新轮询
                     auto_poll_task(item['task_id'], user_key, item.get('model', 'gpt-image-2'), item['timestamp'])
                     
                 elif item.get('status') == 'succeeded':
-                    for url in item.get('urls', []):
-                        # V6.9 修复 Bug：换回原生 st.image，利用全局 CSS 控制悬浮和原网页内放大
-                        st.image(url, use_container_width=True)
+                    urls = item.get('urls', [])
+                    for idx, url in enumerate(urls):
+                        if url:
+                            # 🌟 修复：坚决启用 HTML 锚点模态框，实现任意位置点击即放大！
+                            modal_id = f"modal_hist_{item['task_id']}_{idx}"
+                            html_content = f"""
+                            <a href="#{modal_id}" title="点击放大" style="text-decoration: none;">
+                                <img src="{url}" class="result-thumb">
+                            </a>
+                            <a href="#!" class="img-modal-overlay" id="{modal_id}">
+                                <img src="{url}">
+                            </a>
+                            """
+                            st.markdown(html_content, unsafe_allow_html=True)
                         
                 elif item.get('status') == 'failed': 
                     fail_msg = item.get('reason', '触发安全审查或云端接口异常')
-                    # V6.8 失败原因
                     st.error(f"❌ 失败原因: {fail_msg}")
                     
                 st.divider()
