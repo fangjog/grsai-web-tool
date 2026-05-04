@@ -298,18 +298,20 @@ with col_history:
                 # 3. 完美排版：时间 + 模型 + 短提示词
                 st.markdown(f"**[{item['time_str']}]** `{model_used_badge}` 💡 {short_prompt}")
                 
-                # 4. 隐藏式一键复制折叠面板 (利用 st.code 自带的复制按钮)
+                # 4. 隐藏式一键复制折叠面板
                 with st.expander("📋 展开复制完整提示词"):
                     st.code(prompt_text, language="text")
 
                 if item.get('status') == 'running':
                     if st.button("🔍 查看进度", key=item['task_id'], use_container_width=True):
-                        # 🌟 查看进度时，传入当时记录的模型参数
                         show_progress_dialog(item['task_id'], item['prompt'], user_key, item.get('model', 'gpt-image-2'))
                 elif item.get('status') == 'succeeded':
                     for url in item.get('urls', []):
                         st.markdown(f'<a href="{url}" target="_blank"><img src="{url}" style="width:100%; border-radius:8px; cursor:zoom-in; transition: transform 0.2s; box-shadow: 0 2px 6px rgba(0,0,0,0.1); margin-bottom:8px;" onmouseover="this.style.transform=\'scale(1.02)\'" onmouseout="this.style.transform=\'scale(1)\'"></a>', unsafe_allow_html=True)
                 elif item.get('status') == 'failed': 
-                    st.error("❌ 生成失败")
+                    # 🌟 重点升级：提取并显示具体的失败原因 🌟
+                    # 如果有具体的 reason 就显示，如果没有就给个默认提示
+                    fail_msg = item.get('reason', '触发安全审查或云端接口异常')
+                    st.error(f"❌ 失败原因: {fail_msg}")
                     
                 st.divider()
