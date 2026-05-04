@@ -279,62 +279,74 @@ with col_main:
     with c2: quality = st.selectbox("💎 图片质量", quality_opts, key=f"q_{menu}")
     
     if st.button("✨ 立即生成", type="primary", use_container_width=True):
-        cost = MODEL_COSTS.get(selected_model, 600)
-        if current_balance < cost: st.error("❌ 积分不足")
-        elif not prompt_txt and menu == "✍️ 文生图": st.error("❌ 请输入提示词")
+        # 1. 积分与输入校验
+        if card_info['final_points'] < 600: 
+            st.error("❌ 积分不足")
+        elif not prompt_txt and menu == "✍️ 文生图": 
+            st.error("❌ 请输入描述词")
         else:
-            final_ratio = custom_size if aspect_ratio == "自定义像素" else aspect_ratio
-            payload = {"model": selected_model, "prompt": prompt_txt, "aspectRatio": final_ratio, "quality": quality, "webHook": "-1", "shutProgress": True}
-            
-            if menu == "🖼️ 图生图":
-                urls = []
-                if uploaded_files:
-                    for f in uploaded_files: urls.append(pil_to_data_uri(Image.open(io.BytesIO(f.getvalue()))))
-                elif canvas_result:
-                    urls.append(pil_to_data_uri(Image.fromarray(canvas_result.image_data.astype('uint8'), 'RGBA')))
-                
-                if not urls: st.error("⚠️ 请提供参考图。"); st.stop()
-                payload["urls"] = urls
-            
-            headers = {"Authorization": f"Bearer {GRSAI_API_KEY}", "Content-Type": "application/json"}
-            
-            sub_res = None
-            try:
-                sub_res = requests.post("https://grsai.dakka.com.cn/v1/draw/completions", headers=headers, json=payload, verify=False).json()
-            except Exception as e:
-                st.error("📡 网络超时或异常")
-                
-            if sub_res:
-                if sub_res.get("code") == 0:
-                    tz = pytz.timezone('Asia/Shanghai') # 🌟 锁定中国时区存储
-                    china_now = datetime.now(tz)
-                    tasks_list = st.session_state.tasks
-                    tasks_list.append({"task_id": sub_res["data"]["id"], "timestamp": time.time(), "time_str": china_now.strftime("%H:%M"), "prompt": prompt_txt, "status": "running", "urls": [], "model": selected_model})
-                    st.session_state.tasks = tasks_list
-                    clean_and_get_tasks(user_key)
-                    st.success("🎉 已提交"); time.sleep(0.5); st.rerun()
-                else: 
-                    st.error(f"❌ 失败：{sub_res.get('msg')}")
-
-with col_history:
-    st.markdown("### 🗂️ 创作记录")
-    tasks_list = clean_and_get_tasks(user_key)
-    with st.container(height=700):
-        for item in reversed(tasks_list):
-            m_badge = "👑 VIP" if item.get('model') == 'gpt-image-2-vip' else "普"
-            st.markdown(f"**[{item['time_str']}]** `{m_badge}` 💡 {item['prompt'][:10]}...")
-            with st.expander("📋 完整提示词"): st.code(item['prompt'], language="text")
-            
-            if item['status'] == 'running':
-                auto_poll_task(item['task_id'], user_key, item.get('model','gpt-image-2'), item['timestamp'])
-            elif item['status'] == 'succeeded':
-                urls = item.get('urls', [])
-                imgs_html = ""
-                for idx, url in enumerate(urls):
-                    modal_id = f"cb_{str(item['task_id']).replace('-','')}_{idx}"
-                    # 🌟 使用Checkbox Hack实现历史图片丝滑放大
-                    imgs_html += f'<label for="{modal_id}"><img src="{url}" class="result-thumb"></label><input type="checkbox" id="{modal_id}" class="modal-checkbox"><label for="{modal_id}" class="img-modal-overlay"><img src="{url}"></label>'
-                st.markdown(imgs_html, unsafe_allow_html=True)
-            elif item['status'] == 'failed': 
-                st.error(f"❌ {item.get('reason', '触发安全审查')}")
-            st.divider()
+            with st.spinner("🚀 正在注入云端算力..."):
+                try:
+                    # 2. 准备 Payload
+                    final_ratio = custom_size if (menu == "✍️ 文生图" and aspect_ratio == "自定义像素") else (aspect_ratio if menu == "✍️ 文生图" else "auto")
+                    payload = {
+                        "model": selected_model, 
+                        "prompt": prompt_txt, 
+                        "webHook": "-1", 
+                        "shutProgress": True,
+                        "aspectRatio": final_ratio,
+                        "quality": quality if menu == "✍️ 文生图" else "auto"
+                    }
+                    
+                    # 3. 处理图生图图片 (加固版)
+                    if menu == "🖼️ 图生图":
+                        if not files: 
+                            st.error("⚠️ 请先上传参考图"); st.stop()
+                        try:
+                            # 显式转换，防止 Image.open 报错
+                            payload["urls"] = [pil_to_data_uri(Image.open(io.BytesIO(f.getvalue()))) for f in files]
+                        except Exception as img_err:
+                            st.error(f"❌ 图片处理失败: {str(img_err)}"); st.stop()
+                    
+                    # 4. 发送请求
+                    headers = {"Authorization": f"Bearer {GRSAI_API_KEY}", "Content-Type": "application/json"}
+                    response = requests.post(
+                        "https://grsai.dakka.com.cn/v1/draw/completions", 
+                        headers=headers, 
+                        json=payload, 
+                        verify=False, 
+                        timeout=30
+                    )
+                    
+                    # 5. 解析响应 (带真相透视)
+                    if response.status_code == 200:
+                        api_res = parse_api_response(response.text)
+                        task_id = None
+                        if api_res:
+                            if api_res.get("code") == 0 and "data" in api_res: task_id = api_res["data"].get("id")
+                            elif "id" in api_res: task_id = api_res["id"]
+                        
+                        if task_id:
+                            # 6. 同步至 Supabase (加固版)
+                            bj_now = datetime.now(BJ_TZ).strftime("%H:%M")
+                            new_task = {
+                                "task_id": task_id, 
+                                "timestamp": time.time(), 
+                                "time_str": bj_now, 
+                                "prompt": prompt_txt, 
+                                "status": "running", 
+                                "urls": [], 
+                                "model": selected_model
+                            }
+                            try:
+                                sync_task_to_db(new_task, user_key)
+                                st.rerun() # 成功后立即刷新进入轮询
+                            except Exception as db_err:
+                                st.error(f"❌ 数据库同步失败，请检查Supabase字段: {str(db_err)}")
+                        else:
+                            st.error(f"❌ API未返回有效ID，返回内容: {response.text[:200]}")
+                    else:
+                        st.error(f"📡 API 服务器报错 (状态码 {response.status_code}): {response.text[:200]}")
+                        
+                except Exception as global_err:
+                    st.error(f"💥 提交发生致命错误: {str(global_err)}")
