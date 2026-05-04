@@ -15,7 +15,7 @@ import pytz
 # ==========================================
 # 0. 网页基础配置与防抖 CSS
 # ==========================================
-st.set_page_config(page_title="AI Pro Studio V6.19", page_icon="🚀", layout="wide", initial_sidebar_state="auto")
+st.set_page_config(page_title="AI Pro Studio V6.20", page_icon="🚀", layout="wide", initial_sidebar_state="auto")
 
 st.markdown("""
 <style>
@@ -111,7 +111,7 @@ used_pts = card_info.get('used_points', 0)
 GRSAI_API_KEY = st.secrets.get((card_info.get('api_secret_name') or "API_VIP888").strip("'").strip(), "")
 
 # ==========================================
-# 3. 任务与轮询 (彻底解决源码泄露与断连)
+# 3. 任务与轮询 
 # ==========================================
 if 'tasks' not in st.session_state:
     st.session_state.tasks = load_json(TASKS_FILE).get(user_key, [])
@@ -137,18 +137,16 @@ def auto_poll_task(task_id, active_user_key, model_used, start_time):
     
     for i in range(60):
         p = min(5 + int(time.time() - start_time), 95)
-        # 稳健的进度条容器
         placeholder.markdown(f'<div style="background:#1a1a1a;border-radius:10px;padding:4px;"><div style="height:12px;border-radius:6px;background:linear-gradient(90deg,#00c2ff,#00ffd5);width:{p}%;"></div></div><div style="text-align:right;color:#00ffd5;font-size:12px;margin-top:4px;">⚡ 注入中... {p}%</div>', unsafe_allow_html=True)
         
         try:
-            # 放宽超时到 30 秒，防止网络抖动
-            q_res = requests.post(query_url, headers=headers, json={"id": task_id}, verify=False, timeout=30).json()
+            # 轮询不设超时，稳扎稳打
+            q_res = requests.post(query_url, headers=headers, json={"id": task_id}, verify=False).json()
             if q_res.get("code") == 0:
                 status = q_res["data"]["status"]
                 if status == "succeeded":
                     urls = [img["url"] for img in q_res["data"]["results"]]
                     
-                    # 🌟 HTML 金钟罩：强制用 <div> 块包裹所有图片 a 标签，防止泄露源码
                     success_html = f'<div style="background:#1a1a1a;border-radius:10px;padding:4px;"><div style="height:12px;border-radius:6px;background:linear-gradient(90deg,#00ff88,#00c2ff);width:100%;"></div></div><div style="text-align:right;color:#00ff88;font-size:12px;margin-top:4px;">✅ 绘制完成！</div><div class="image-gallery" style="margin-top: 10px;">'
                     for idx, url in enumerate(urls):
                         m_id = f"zm_{safe_id}_{idx}"
@@ -223,13 +221,26 @@ with col_main:
                 if not u_list: st.error("⚠️ 缺少参考图"); st.stop()
                 payload["urls"] = u_list
             
-            # 🌟 修复：放宽提交超时到 60 秒，对抗 API 高峰期卡顿
+            # 🌟 核心排雷：剖析 API 响应的五脏六腑
             api_res = None
             err_msg = ""
             try:
-                api_res = requests.post("https://grsai.dakka.com.cn/v1/draw/completions", headers={"Authorization": f"Bearer {GRSAI_API_KEY}"}, json=payload, verify=False, timeout=60).json()
+                # 彻底移除 timeout，让子弹飞一会，哪怕等 2 分钟也绝不断开！
+                response = requests.post("https://grsai.dakka.com.cn/v1/draw/completions", headers={"Authorization": f"Bearer {GRSAI_API_KEY}"}, json=payload, verify=False)
+                
+                # 如果 HTTP 状态码不是 200，说明 API 服务器爆单了或者宕机了
+                if response.status_code == 200:
+                    try:
+                        api_res = response.json()
+                    except Exception as e:
+                        # 抓到元凶：服务器虽然通了，但返回的不是 JSON 数据（通常是 502/504 的 HTML 报错页面）
+                        err_msg = f"📡 接口被挤爆，返回了非标准数据，截取如下:\n {response.text[:150]}"
+                else:
+                    err_msg = f"📡 接口异常 (HTTP {response.status_code}):\n {response.text[:150]}"
+                    
             except Exception as e:
-                err_msg = "📡 服务器响应拥挤或网络超时，请稍后重试"
+                # 真正的底层网络断连
+                err_msg = f"📡 网络通讯硬性断开: {str(e)}"
                 
             if err_msg:
                 st.error(err_msg)
@@ -240,11 +251,11 @@ with col_main:
                     "prompt": prompt_txt, "status": "running", "urls": [], "model": selected_model, "is_deducted": False
                 })
                 clean_and_save_tasks()
-                st.success("🎉 已提交")
+                st.success("🎉 已提交云端进行排队！")
                 time.sleep(0.5)
                 st.rerun() 
             elif api_res:
-                st.error(f"❌ 失败: {api_res.get('msg')}")
+                st.error(f"❌ 云端拦截: {api_res.get('msg')}")
 
 with col_history:
     st.markdown("### 🗂️ 创作记录")
@@ -259,14 +270,11 @@ with col_history:
                 auto_poll_task(item['task_id'], user_key, item['model'], item['timestamp'])
             elif item['status'] == 'succeeded':
                 safe_item_id = "".join(filter(str.isalnum, str(item['task_id'])))
-                
-                # 🌟 同理：历史记录里也加上 <div> 保护壳
                 hist_html = '<div class="image-gallery">'
                 for idx, url in enumerate(item['urls']):
                     m_id = f"zm_h_{safe_item_id}_{idx}"
                     hist_html += f'<a href="#{m_id}"><img src="{url}" class="thumb-img"></a><a href="#!" class="zoom-modal" id="{m_id}"><img src="{url}"></a>'
                 hist_html += '</div>'
-                
                 st.markdown(hist_html, unsafe_allow_html=True)
             elif item['status'] == 'failed': st.error(f"❌ {item.get('reason', '失败')}")
             st.divider()
