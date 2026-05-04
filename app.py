@@ -15,7 +15,7 @@ import pytz
 # ==========================================
 # 0. 网页基础配置与防抖 CSS
 # ==========================================
-st.set_page_config(page_title="AI Pro Studio V6.20", page_icon="🚀", layout="wide", initial_sidebar_state="auto")
+st.set_page_config(page_title="AI Pro Studio V6.21", page_icon="🚀", layout="wide", initial_sidebar_state="auto")
 
 st.markdown("""
 <style>
@@ -44,7 +44,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 1. 数据库与初始化
+# 1. 数据库与万能解析器
 # ==========================================
 try:
     SUPABASE_URL = st.secrets["SUPABASE_URL"]
@@ -59,6 +59,20 @@ MODEL_COSTS = {"gpt-image-2": 600, "gpt-image-2-vip": 900}
 TASKS_FILE = "tasks_history.json"
 ratio_opts = ["auto", "1:1", "3:2", "2:3", "16:9", "9:16", "5:4", "4:5", "4:3", "3:4", "21:9", "9:21", "1:3", "3:1", "2:1", "1:2", "自定义像素"]
 quality_opts = ["auto", "high", "medium", "low"]
+
+# 🌟 V6.21 核心：万能 JSON 解析器（专门对付不规范的 API 返回）
+def parse_api_response(text):
+    if not text: return None
+    try: return json.loads(text) # 先尝试标准解析
+    except: pass
+    
+    # 尝试暴力剥离 "data: " 前缀
+    for line in text.split('\n'):
+        line = line.strip()
+        if line.startswith('data:'):
+            try: return json.loads(line[5:].strip())
+            except: pass
+    return None
 
 def load_json(path, default=None):
     if default is None: default = {}
@@ -140,29 +154,45 @@ def auto_poll_task(task_id, active_user_key, model_used, start_time):
         placeholder.markdown(f'<div style="background:#1a1a1a;border-radius:10px;padding:4px;"><div style="height:12px;border-radius:6px;background:linear-gradient(90deg,#00c2ff,#00ffd5);width:{p}%;"></div></div><div style="text-align:right;color:#00ffd5;font-size:12px;margin-top:4px;">⚡ 注入中... {p}%</div>', unsafe_allow_html=True)
         
         try:
-            # 轮询不设超时，稳扎稳打
-            q_res = requests.post(query_url, headers=headers, json={"id": task_id}, verify=False).json()
-            if q_res.get("code") == 0:
-                status = q_res["data"]["status"]
+            resp = requests.post(query_url, headers=headers, json={"id": task_id}, verify=False)
+            q_res = parse_api_response(resp.text) # 🌟 轮询也使用万能解析器
+            
+            if q_res:
+                status = None
+                urls = []
+                
+                # 兼容标准和非标准格式
+                if q_res.get("code") == 0 and "data" in q_res:
+                    status = q_res["data"].get("status")
+                    urls = [img.get("url") for img in q_res["data"].get("results", []) if img.get("url")]
+                elif "status" in q_res:
+                    status = q_res.get("status")
+                    if "results" in q_res: urls = [img.get("url") for img in q_res.get("results", []) if img.get("url")]
+                    elif q_res.get("url"): urls = [q_res.get("url")]
+
                 if status == "succeeded":
-                    urls = [img["url"] for img in q_res["data"]["results"]]
-                    
-                    success_html = f'<div style="background:#1a1a1a;border-radius:10px;padding:4px;"><div style="height:12px;border-radius:6px;background:linear-gradient(90deg,#00ff88,#00c2ff);width:100%;"></div></div><div style="text-align:right;color:#00ff88;font-size:12px;margin-top:4px;">✅ 绘制完成！</div><div class="image-gallery" style="margin-top: 10px;">'
-                    for idx, url in enumerate(urls):
-                        m_id = f"zm_{safe_id}_{idx}"
-                        success_html += f'<a href="#{m_id}"><img src="{url}" class="thumb-img" style="border:2px solid #00ff88;"></a><a href="#!" class="zoom-modal" id="{m_id}"><img src="{url}"></a>'
-                    success_html += '</div>'
-                    
-                    placeholder.markdown(success_html, unsafe_allow_html=True)
-                    
-                    for t in st.session_state.tasks:
-                        if t['task_id'] == task_id and not t.get('is_deducted'):
-                            deduct_balance(active_user_key, len(urls) * MODEL_COSTS.get(model_used, 600))
-                            t.update({"status": "succeeded", "urls": urls, "is_deducted": True})
-                    clean_and_save_tasks(); time.sleep(1.5); st.rerun(); return 
+                    if urls:
+                        success_html = f'<div style="background:#1a1a1a;border-radius:10px;padding:4px;"><div style="height:12px;border-radius:6px;background:linear-gradient(90deg,#00ff88,#00c2ff);width:100%;"></div></div><div style="text-align:right;color:#00ff88;font-size:12px;margin-top:4px;">✅ 绘制完成！</div><div class="image-gallery" style="margin-top: 10px;">'
+                        for idx, url in enumerate(urls):
+                            m_id = f"zm_{safe_id}_{idx}"
+                            success_html += f'<a href="#{m_id}"><img src="{url}" class="thumb-img" style="border:2px solid #00ff88;"></a><a href="#!" class="zoom-modal" id="{m_id}"><img src="{url}"></a>'
+                        success_html += '</div>'
+                        
+                        placeholder.markdown(success_html, unsafe_allow_html=True)
+                        
+                        for t in st.session_state.tasks:
+                            if t['task_id'] == task_id and not t.get('is_deducted'):
+                                deduct_balance(active_user_key, len(urls) * MODEL_COSTS.get(model_used, 600))
+                                t.update({"status": "succeeded", "urls": urls, "is_deducted": True})
+                        clean_and_save_tasks(); time.sleep(1.5); st.rerun(); return 
+                    else:
+                        for t in st.session_state.tasks:
+                            if t['task_id'] == task_id: t.update({"status": "failed", "reason": "服务器状态成功但未回传图片，可能是内容违规被拦截"})
+                        clean_and_save_tasks(); st.rerun(); return
+
                 elif status == "failed":
                     for t in st.session_state.tasks:
-                        if t['task_id'] == task_id: t.update({"status": "failed", "reason": "触发安全审查或失败"})
+                        if t['task_id'] == task_id: t.update({"status": "failed", "reason": "触发安全审查或云端失败"})
                     clean_and_save_tasks(); st.rerun(); return
         except: pass
         time.sleep(3)
@@ -221,41 +251,31 @@ with col_main:
                 if not u_list: st.error("⚠️ 缺少参考图"); st.stop()
                 payload["urls"] = u_list
             
-            # 🌟 核心排雷：剖析 API 响应的五脏六腑
-            api_res = None
-            err_msg = ""
             try:
-                # 彻底移除 timeout，让子弹飞一会，哪怕等 2 分钟也绝不断开！
                 response = requests.post("https://grsai.dakka.com.cn/v1/draw/completions", headers={"Authorization": f"Bearer {GRSAI_API_KEY}"}, json=payload, verify=False)
-                
-                # 如果 HTTP 状态码不是 200，说明 API 服务器爆单了或者宕机了
                 if response.status_code == 200:
-                    try:
-                        api_res = response.json()
-                    except Exception as e:
-                        # 抓到元凶：服务器虽然通了，但返回的不是 JSON 数据（通常是 502/504 的 HTML 报错页面）
-                        err_msg = f"📡 接口被挤爆，返回了非标准数据，截取如下:\n {response.text[:150]}"
-                else:
-                    err_msg = f"📡 接口异常 (HTTP {response.status_code}):\n {response.text[:150]}"
+                    api_res = parse_api_response(response.text) # 🌟 核心：使用万能解析器提取任务 ID
+                    task_id = None
                     
+                    if api_res:
+                        if api_res.get("code") == 0 and "data" in api_res: task_id = api_res["data"].get("id")
+                        elif "id" in api_res: task_id = api_res["id"]
+                    
+                    if task_id:
+                        bj_now = datetime.now(BJ_TZ).strftime("%H:%M")
+                        st.session_state.tasks.append({
+                            "task_id": task_id, "timestamp": time.time(), "time_str": bj_now, 
+                            "prompt": prompt_txt, "status": "running", "urls": [], "model": selected_model, "is_deducted": False
+                        })
+                        clean_and_save_tasks()
+                        st.success("🎉 任务已提交云端！")
+                        time.sleep(0.5); st.rerun()
+                    else:
+                        st.error(f"❌ 云端数据异常，截取如下:\n {response.text[:150]}")
+                else:
+                    st.error(f"📡 接口返回异常状态 (HTTP {response.status_code}):\n {response.text[:150]}")
             except Exception as e:
-                # 真正的底层网络断连
-                err_msg = f"📡 网络通讯硬性断开: {str(e)}"
-                
-            if err_msg:
-                st.error(err_msg)
-            elif api_res and api_res.get("code") == 0:
-                bj_now = datetime.now(BJ_TZ).strftime("%H:%M")
-                st.session_state.tasks.append({
-                    "task_id": api_res["data"]["id"], "timestamp": time.time(), "time_str": bj_now, 
-                    "prompt": prompt_txt, "status": "running", "urls": [], "model": selected_model, "is_deducted": False
-                })
-                clean_and_save_tasks()
-                st.success("🎉 已提交云端进行排队！")
-                time.sleep(0.5)
-                st.rerun() 
-            elif api_res:
-                st.error(f"❌ 云端拦截: {api_res.get('msg')}")
+                st.error(f"📡 网络通讯硬性断开: {str(e)}")
 
 with col_history:
     st.markdown("### 🗂️ 创作记录")
