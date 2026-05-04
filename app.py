@@ -14,7 +14,7 @@ from supabase import create_client, Client
 # ==========================================
 # 0. 网页基础配置
 # ==========================================
-st.set_page_config(page_title="AI Pro Studio V6.5", page_icon="🚀", layout="wide", initial_sidebar_state="auto")
+st.set_page_config(page_title="image-2 Studio V6.5", page_icon="🚀", layout="wide", initial_sidebar_state="auto")
 
 st.markdown("""
 <style>
@@ -86,7 +86,7 @@ if not card_info:
     st.markdown("<br><br><br>", unsafe_allow_html=True) 
     col1, col2, col3 = st.columns([1, 2, 1]) 
     with col2:
-        st.markdown("<div style='text-align: center;'><h1>🚀 AI Pro Studio</h1><p>输入激活码解锁创作台</p></div>", unsafe_allow_html=True)
+        st.markdown("<div style='text-align: center;'><h1>🚀 image-2 Studio</h1><p>输入激活码解锁创作台</p></div>", unsafe_allow_html=True)
         user_key_input = st.text_input("激活码", type="password", placeholder="🔑 在此输入激活码...", label_visibility="collapsed")
         if st.button("立即解锁进入系统 ✨", type="primary", use_container_width=True):
             user_key = user_key_input.strip()
@@ -215,7 +215,7 @@ if st.sidebar.button("🚪 退出登录", use_container_width=True):
 st.sidebar.divider()
 menu = st.sidebar.radio("功能导航", ["✍️ 文生图", "🖼️ 图生图"])
 
-st.title("🚀 AI Pro Studio")
+st.title("🚀 image-2 文生图")
 col_main, col_history = st.columns([7, 3])
 
 with col_main:
