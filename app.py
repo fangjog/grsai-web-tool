@@ -15,7 +15,7 @@ import pytz
 # ==========================================
 # 0. 网页基础配置与全局 CSS
 # ==========================================
-st.set_page_config(page_title="AI Pro Studio V6.41", page_icon="🚀", layout="wide", initial_sidebar_state="auto")
+st.set_page_config(page_title="AI Pro Studio V6.42", page_icon="🚀", layout="wide", initial_sidebar_state="auto")
 
 st.markdown("""
 <style>
@@ -23,17 +23,25 @@ st.markdown("""
     .stButton > button { border-radius: 8px; font-weight: bold; transition: all 0.3s; }
     .stButton > button:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
     
-    /* 🌟 HTML 模态框核心 CSS (终极防拦截版) */
+    /* 🌟 HTML 模态框核心 CSS */
     .modal-checkbox { display: none !important; }
     
-    /* 遮罩层：默认隐藏，Checkbox选中时显示 */
+    .result-thumb {
+        width: 100%; border-radius: 8px; cursor: zoom-in; 
+        transition: transform 0.2s ease-in-out; 
+        box-shadow: 0 2px 6px rgba(0,0,0,0.1); margin-bottom: 8px;
+        display: block; opacity: 1 !important;
+    }
+    .result-thumb:hover { transform: scale(1.02); box-shadow: 0 6px 16px rgba(0,0,0,0.2); }
+    
+    /* 遮罩层 */
     .img-modal-overlay {
         display: none; position: fixed; z-index: 999999; top: 0; left: 0; 
         width: 100vw; height: 100vh; align-items: center; justify-content: center; 
     }
     .modal-checkbox:checked ~ .img-modal-overlay { display: flex !important; }
     
-    /* 黑色半透明背景：点击关闭 */
+    /* 点击背景关闭 */
     .modal-close-bg {
         position: absolute; top:0; left:0; width:100%; height:100%; 
         background: rgba(0,0,0,0.92); cursor: zoom-out; z-index: 1;
@@ -58,23 +66,32 @@ st.markdown("""
     .close-btn { color: #aaa; font-size: 32px; cursor: pointer; font-weight: bold; line-height: 0.8; }
     .close-btn:hover { color: #ff4b4b; }
     
+    /* 左右视图区域 */
     .view-side {
-        flex: 1; display: flex; gap: 2px; background: #111; overflow: hidden; border-radius: 0 0 12px 12px;
+        flex: 1; display: flex; gap: 2px; background: #111; border-radius: 0 0 12px 12px;
+        overflow: hidden; /* 极其重要：防止放大时图片溢出边框 */
     }
     .side-panel {
         flex: 1; position: relative; background: #0b0b0b; display: flex; align-items: center; justify-content: center;
+        overflow: hidden; /* 极其重要：防止放大时图片溢出边框 */
     }
-    .side-panel img { width: 100%; height: 100%; object-fit: contain; }
+    
+    .side-panel img { 
+        width: 100%; height: 100%; object-fit: contain; 
+        /* 过渡动画使放大平滑 */
+        transition: transform 0.15s ease-out;
+    }
     
     .side-label { 
         position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); 
         background: rgba(0,0,0,0.8); color: #fff; padding: 8px 18px; 
         border-radius: 20px; font-size: 15px; font-weight:bold; border: 1px solid #555;
+        pointer-events: none; /* 防止标签遮挡鼠标放大事件 */
     }
     
     /* 单图放大容器 */
     .single-img-container {
-        position: relative; z-index: 10; max-width: 90vw; max-height: 90vh;
+        position: relative; z-index: 10; max-width: 90vw; max-height: 90vh; overflow: hidden; border-radius: 12px;
     }
     .single-img-container img {
         max-width: 90vw; max-height: 90vh; border-radius: 12px; 
@@ -293,8 +310,12 @@ with col_main:
                 uploaded_b64_urls.append(data_uri) 
                 zoom_id = f"zm_up_{i}" 
                 with p_cols[i % 6]:
-                    # 🌟 原生无缝防黑屏代码 (上传区预览)
-                    html_str = f'<div class="modal-wrapper" style="position:relative;"><label for="{zoom_id}" style="cursor:zoom-in;display:block;"><img src="{data_uri}" style="width:100%;border-radius:8px;box-shadow:0 2px 6px rgba(0,0,0,0.1);transition:transform 0.2s;" onmouseover="this.style.transform=\'scale(1.02)\'" onmouseout="this.style.transform=\'scale(1)\'"><div style="text-align:center;font-size:11px;color:#aaa;margin-top:4px;">图 {i+1} (点击放大)</div></label><input type="checkbox" id="{zoom_id}" class="modal-checkbox"><div class="img-modal-overlay"><label for="{zoom_id}" class="modal-close-bg"></label><div class="single-img-container"><img src="{data_uri}"></div></div></div>'
+                    # 🌟 修复上传区的单图放大，加入了鼠标跟随放大镜功能
+                    html_str = (
+                        f'<label for="{zoom_id}"><img src="{data_uri}" class="result-thumb" style="width:100%; border-radius:8px; cursor:zoom-in;"><div style="text-align:center; font-size:11px; color:#aaa; margin-top:2px;">图 {i+1}</div></label>'
+                        f'<input type="checkbox" id="{zoom_id}" class="modal-checkbox">'
+                        f'<div class="img-modal-overlay"><label for="{zoom_id}" class="modal-close-bg"></label><div class="single-img-container"><img src="{data_uri}" onmousemove="this.style.transformOrigin=(event.offsetX/this.offsetWidth)*100+\'% \'+(event.offsetY/this.offsetHeight)*100+\'%\';this.style.transform=\'scale(2.5)\'" onmouseout="this.style.transform=\'scale(1)\'" style="transition:transform 0.1s;cursor:crosshair;"></div></div>'
+                    )
                     st.markdown(html_str, unsafe_allow_html=True)
         
         canvas_result = None
@@ -391,15 +412,45 @@ with col_history:
                     for i, url in enumerate(urls):
                         modal_id = f"cb_{str(item['task_id']).replace('-','')}_{i}"
                         
-                        # 🌟 终极防屏蔽技术：确保 HTML 所有标签压缩在一行，绝不给 Streamlit 插入 <br> 或 <p> 破坏标签兄弟关系的机会！
+                        # 🌟 新版核心逻辑：干掉划线对比，纯净左右布局，并加入了内联的鼠标动态平移放大代码！
                         if src_urls and i < len(src_urls):
                             before_url = src_urls[i]
                             after_url = url
                             
-                            html_str = f'<div class="modal-wrapper" style="position:relative;"><label for="{modal_id}" style="cursor:zoom-in;display:block;"><img src="{after_url}" style="width:100%;border-radius:8px;box-shadow:0 2px 6px rgba(0,0,0,0.1);transition:transform 0.2s;" onmouseover="this.style.transform=\'scale(1.02)\'" onmouseout="this.style.transform=\'scale(1)\'"><div style="text-align:center;font-size:11px;color:#aaa;margin-top:4px;">图 {i+1} (点击对比)</div></label><input type="checkbox" id="{modal_id}" class="modal-checkbox"><div class="img-modal-overlay"><label for="{modal_id}" class="modal-close-bg"></label><div class="compare-wrapper"><div class="compare-header"><span style="color:#fff;font-size:16px;font-weight:bold;">🪟 图像优化对比</span><label for="{modal_id}" class="close-btn">&times;</label></div><div class="view-side"><div class="side-panel"><img src="{before_url}"><div class="side-label">原图 (Before)</div></div><div class="side-panel"><img src="{after_url}"><div class="side-label">成品 (After)</div></div></div></div></div></div>'
+                            html_str = (
+                                f'<div class="modal-wrapper" style="position:relative;">'
+                                f'<label for="{modal_id}" style="cursor:zoom-in;display:block;">'
+                                f'<img src="{after_url}" class="result-thumb" style="width:100%;border-radius:8px;box-shadow:0 2px 6px rgba(0,0,0,0.1);transition:transform 0.2s;" onmouseover="this.style.transform=\'scale(1.02)\'" onmouseout="this.style.transform=\'scale(1)\'">'
+                                f'<div style="text-align:center;font-size:11px;color:#aaa;margin-top:4px;">图 {i+1} (点击对比)</div>'
+                                f'</label>'
+                                f'<input type="checkbox" id="{modal_id}" class="modal-checkbox">'
+                                f'<div class="img-modal-overlay">'
+                                f'<label for="{modal_id}" class="modal-close-bg"></label>'
+                                f'<div class="compare-wrapper">'
+                                f'<div class="compare-header"><span style="color:#fff;font-size:16px;font-weight:bold;">🪟 图像优化对比 (鼠标悬停放大)</span><label for="{modal_id}" class="close-btn">&times;</label></div>'
+                                f'<div class="view-side">'
+                                f'<div class="side-panel"><img src="{before_url}" onmousemove="this.style.transformOrigin=(event.offsetX/this.offsetWidth)*100+\'% \'+(event.offsetY/this.offsetHeight)*100+\'%\';this.style.transform=\'scale(2.5)\'" onmouseout="this.style.transform=\'scale(1)\'" style="cursor:crosshair;"><div class="side-label">原图 (Before)</div></div>'
+                                f'<div class="side-panel"><img src="{after_url}" onmousemove="this.style.transformOrigin=(event.offsetX/this.offsetWidth)*100+\'% \'+(event.offsetY/this.offsetHeight)*100+\'%\';this.style.transform=\'scale(2.5)\'" onmouseout="this.style.transform=\'scale(1)\'" style="cursor:crosshair;"><div class="side-label">成品 (After)</div></div>'
+                                f'</div>'
+                                f'</div>'
+                                f'</div>'
+                                f'</div>'
+                            )
                             st.markdown(html_str, unsafe_allow_html=True)
                         else:
-                            html_str = f'<div class="modal-wrapper" style="position:relative;"><label for="{modal_id}" style="cursor:zoom-in;display:block;"><img src="{url}" style="width:100%;border-radius:8px;box-shadow:0 2px 6px rgba(0,0,0,0.1);transition:transform 0.2s;" onmouseover="this.style.transform=\'scale(1.02)\'" onmouseout="this.style.transform=\'scale(1)\'"></label><input type="checkbox" id="{modal_id}" class="modal-checkbox"><div class="img-modal-overlay"><label for="{modal_id}" class="modal-close-bg"></label><div class="single-img-container"><img src="{url}"></div></div></div>'
+                            # 普通单图也有放大镜功能了！
+                            html_str = (
+                                f'<div class="modal-wrapper" style="position:relative;">'
+                                f'<label for="{modal_id}" style="cursor:zoom-in;display:block;">'
+                                f'<img src="{url}" class="result-thumb" style="width:100%;border-radius:8px;box-shadow:0 2px 6px rgba(0,0,0,0.1);transition:transform 0.2s;" onmouseover="this.style.transform=\'scale(1.02)\'" onmouseout="this.style.transform=\'scale(1)\'">'
+                                f'</label>'
+                                f'<input type="checkbox" id="{modal_id}" class="modal-checkbox">'
+                                f'<div class="img-modal-overlay">'
+                                f'<label for="{modal_id}" class="modal-close-bg"></label>'
+                                f'<div class="single-img-container"><img src="{url}" onmousemove="this.style.transformOrigin=(event.offsetX/this.offsetWidth)*100+\'% \'+(event.offsetY/this.offsetHeight)*100+\'%\';this.style.transform=\'scale(2.5)\'" onmouseout="this.style.transform=\'scale(1)\'" style="transition:transform 0.1s;cursor:crosshair;"></div>'
+                                f'</div>'
+                                f'</div>'
+                            )
                             st.markdown(html_str, unsafe_allow_html=True)
                             
                 elif item['status'] == 'failed': st.error(f"❌ 失败/未通过审查")
