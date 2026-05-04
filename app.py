@@ -180,11 +180,11 @@ def show_progress_dialog(task_id, prompt_text, active_user_key, model_used):
                     # 提取真正的报错信息（优先抓取 error 字段）
                     actual_err = raw_error if raw_error and raw_error != "error" else raw_reason
                     
-                    # 常见英文报错本地翻译映射表（后续有新的英文报错，可以直接在这里加）
+                    # 常见英文报错本地翻译映射表
                     error_dict = {
-                        "The current model has a high load, please use another model": "当前模型并发排队拥挤，请稍后再试，或切换至 其他 模型",
+                        "The current model has a high load, please use another model": "当前模型并发拥挤，请稍后再试，或切换至 VIP 模型",
+                        "We are sorry, but the images we created may have violated our relevant policies. If you think we made a mistake, please try again or edit your prompt.": "❌ 触发安全审查：生成的内容疑似包含违禁元素，请修改提示词后重试",
                         "error": "云端生成异常或触发安全审查，请调整提示词"
-                        "We are sorry, but the images we created may have violated our relevant policies. If you think we made a mistake, please try again or edit your prompt.": "很抱歉，我们生成的图片可能违反了我们的相关政策。如果您认为我们判断有误，请重新尝试或修改您的提示。",
                     }
                     
                     # 匹配翻译，如果没有匹配到，就显示原英文
@@ -192,7 +192,9 @@ def show_progress_dialog(task_id, prompt_text, active_user_key, model_used):
                     
                     status_text.error(f"❌ **任务失败:** {cn_error} (失败不扣除积分)")
                     for t in st.session_state.tasks:
-                        if t['task_id'] == task_id: t['status'] = 'failed'
+                        if t['task_id'] == task_id: 
+                            t['status'] = 'failed'
+                            t['reason'] = cn_error # 把翻译后的中文原因存入历史记录
                     clean_and_get_tasks(active_user_key)
                     break
         except: pass
