@@ -15,7 +15,7 @@ import pytz
 # ==========================================
 # 0. 网页基础配置与全局 CSS
 # ==========================================
-st.set_page_config(page_title="AI Pro Studio V6.33", page_icon="🚀", layout="wide", initial_sidebar_state="auto")
+st.set_page_config(page_title="AI Pro Studio V6.34", page_icon="🚀", layout="wide", initial_sidebar_state="auto")
 
 st.markdown("""
 <style>
@@ -60,7 +60,7 @@ except Exception as e:
     st.error("❌ 数据库连接失败。")
     st.stop()
 
-# --- 核心：云端历史记录 (最多拉取30条) ---
+# --- 核心：云端历史记录 ---
 def fetch_tasks_from_db(card_key):
     try:
         res = supabase.table("tasks").select("*").eq("card_key", card_key).order("timestamp", desc=True).limit(30).execute()
@@ -71,7 +71,6 @@ def sync_task_to_db(task_data, card_key):
     try:
         task_data["card_key"] = card_key
         supabase.table("tasks").upsert(task_data, on_conflict="task_id").execute()
-        # 自动删除超过 30 条的老数据
         all_res = supabase.table("tasks").select("id").eq("card_key", card_key).order("timestamp", desc=True).execute()
         if len(all_res.data) > 30:
             old_ids = [r['id'] for r in all_res.data[30:]]
@@ -97,6 +96,10 @@ def add_template(card_key, name, content, is_shortcut):
 
 def delete_template(temp_id):
     try: supabase.table("prompt_templates").delete().eq("id", temp_id).execute()
+    except: pass
+
+def toggle_template_shortcut(temp_id, current_status):
+    try: supabase.table("prompt_templates").update({"is_shortcut": not current_status}).eq("id", temp_id).execute()
     except: pass
 
 # --- 基础工具 ---
@@ -134,7 +137,7 @@ def parse_api_response(text):
     return None
 
 # ==========================================
-# 2. 身份验证 (恢复经典布局)
+# 2. 身份验证
 # ==========================================
 query_key = st.query_params.get("key", "")
 card_info = get_card_info(query_key) if query_key else None
@@ -197,7 +200,6 @@ def auto_poll_task(task_id, active_user_key, model_used, start_time):
 # ==========================================
 # 4. 主界面
 # ==========================================
-# 🌟 恢复最高级的 HTML 积分侧边栏卡片！
 st.sidebar.markdown(f'### 👤 用户中心\n`{user_key}`')
 st.sidebar.markdown(f"""
 <div style="background-color: #1e1e1e; padding: 15px; border-radius: 12px; border: 1px solid #333;">
@@ -221,23 +223,26 @@ col_main, col_history = st.columns([7, 3])
 with col_main:
     selected_model = st.selectbox("🤖 模型选择", ["gpt-image-2", "gpt-image-2-vip"])
     
-    # 🌟 新增：快捷提示词模板按键
     if "current_prompt" not in st.session_state: 
         st.session_state.current_prompt = ""
         
     all_temps = fetch_templates(user_key)
     shortcuts = [t for t in all_temps if t['is_shortcut']]
-    if shortcuts:
-        st.caption("✨ 快捷描述词模板")
-        s_cols = st.columns(min(len(shortcuts), 5))
-        for i, s_item in enumerate(shortcuts):
-            if s_cols[i % 5].button(f"📌 {s_item['name']}", key=f"s_{s_item['id']}", use_container_width=True):
-                st.session_state.current_prompt = s_item['content']
-                st.rerun()
+    
+    # 🌟 核心：将快捷按钮渲染逻辑封装，方便按需调用
+    def render_shortcut_buttons():
+        if shortcuts:
+            st.caption("✨ 快捷描述词模板")
+            s_cols = st.columns(min(len(shortcuts), 5) if len(shortcuts) > 0 else 1)
+            for i, s_item in enumerate(shortcuts):
+                if s_cols[i % 5].button(f"📌 {s_item['name']}", key=f"s_{s_item['id']}", use_container_width=True):
+                    st.session_state.current_prompt = s_item['content']
+                    st.rerun()
 
     upload_zoom_container = st.empty()
     
     if menu == "✍️ 文生图":
+        render_shortcut_buttons() # 文生图：在输入框正上方
         prompt_txt = st.text_area("画面描述", value=st.session_state.current_prompt, height=120)
     else:
         st.markdown("#### 🖼️ 图生图")
@@ -264,10 +269,11 @@ with col_main:
         canvas_result = None
         if not uploaded_files:
             canvas_result = st_canvas(fill_color="rgba(255,165,0,0.3)", height=300, key="cvs")
-            
+        
+        # 图生图：确保快捷按钮出现在图片下方、输入框的正上方！
+        render_shortcut_buttons() 
         prompt_txt = st.text_area("垫图指令", value=st.session_state.current_prompt, height=80)
         
-    # 防止用户手动修改后被按钮覆盖
     if prompt_txt != st.session_state.current_prompt:
         st.session_state.current_prompt = prompt_txt
 
@@ -327,7 +333,7 @@ with col_main:
                     st.error(f"💥 提交发生致命错误: {str(global_err)}")
 
     st.divider()
-    # 🌟 新增：提示词库管理功能区 (隐藏在手风琴里，保持主界面清爽)
+    # 🌟 提示词库管理与自定义模板
     with st.expander("📚 提示词库管理与自定义模板"):
         t_c1, t_c2 = st.columns([1, 2])
         with t_c1:
@@ -344,14 +350,23 @@ with col_main:
         if not all_temps: st.caption("暂无模板。")
         else:
             for t in all_temps:
-                tc1, tc2, tc3 = st.columns([2, 5, 1])
-                tc1.write(f"**{t['name']}**" + (" (📌)" if t['is_shortcut'] else ""))
+                # 重新规划宽度比例，确保按钮放得下
+                tc1, tc2, tc3, tc4 = st.columns([2, 4, 1.5, 1])
+                tc1.write(f"**{t['name']}**")
                 tc2.caption(t['content'][:30] + "...")
-                if tc3.button("🗑️", key=f"del_{t['id']}", help="删除模板"):
-                    delete_template(t['id']); st.rerun()
+                
+                # 🌟 一键固定/取消快捷按钮
+                is_pinned = t['is_shortcut']
+                if tc3.button("📌 取消固定" if is_pinned else "📍 固定快捷", key=f"pin_{t['id']}", use_container_width=True):
+                    toggle_template_shortcut(t['id'], is_pinned)
+                    st.rerun()
+                
+                # 🌟 删除按钮修复
+                if tc4.button("🗑️ 删除", key=f"del_{t['id']}", use_container_width=True):
+                    delete_template(t['id'])
+                    st.rerun()
 
 with col_history:
-    # 🌟 顶部增加一键清空按钮
     c_hist, c_clear = st.columns([3, 1])
     with c_hist: st.markdown("### 🗂️ 创作记录")
     with c_clear: 
