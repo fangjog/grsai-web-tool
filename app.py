@@ -321,7 +321,22 @@ with col_main:
                 
             if sub_res:
                 if sub_res.get("code") == 0:
-                    add_task({"task_id": sub_res["data"]["id"], "timestamp": time.time(), "time_str": datetime.now().strftime("%H:%M"), "prompt": prompt_txt, "status": "running", "urls": [], "model": selected_model, "is_deducted": False}, user_key)
+                    # 🌟 强制使用中国时区时间
+                    import pytz
+                    tz = pytz.timezone('Asia/Shanghai')
+                    china_time_str = datetime.now(tz).strftime("%H:%M")
+                    
+                    add_task({
+                        "task_id": sub_res["data"]["id"], 
+                        "timestamp": time.time(), 
+                        "time_str": china_time_str, 
+                        "prompt": prompt_txt, 
+                        "status": "running", 
+                        "urls": [], 
+                        "model": selected_model, 
+                        "is_deducted": False
+                    }, user_key)
+                    
                     st.success("🎉 任务已提交云端！")
                     time.sleep(0.5)
                     st.rerun() 
