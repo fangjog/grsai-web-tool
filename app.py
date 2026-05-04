@@ -184,7 +184,7 @@ def show_progress_dialog(task_id, prompt_text, active_user_key, model_used):
                     error_dict = {
                         "The current model has a high load, please use another model": "当前模型并发排队拥挤，请稍后再试，或切换至 其他 模型",
                         "error": "云端生成异常或触发安全审查，请调整提示词"
-                        "We are sorry, but the images we created may have violated our relevant policies. If you think we made a mistake, please try again or edit your prompt": "很抱歉，我们生成的图片可能违反了我们的相关政策。如果您认为我们判断有误，请重新尝试或修改您的提示。",
+                        "We are sorry, but the images we created may have violated our relevant policies. If you think we made a mistake, please try again or edit your prompt.": "很抱歉，我们生成的图片可能违反了我们的相关政策。如果您认为我们判断有误，请重新尝试或修改您的提示。",
                     }
                     
                     # 匹配翻译，如果没有匹配到，就显示原英文
