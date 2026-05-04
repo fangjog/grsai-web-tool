@@ -3,3 +3,4 @@ requests
 Pillow
 supabase
 streamlit-drawable-canvas
+pytz
