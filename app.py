@@ -14,7 +14,7 @@ from supabase import create_client, Client
 # ==========================================
 # 0. 网页基础配置
 # ==========================================
-st.set_page_config(page_title="AI Pro Studio V6.7", page_icon="🚀", layout="wide", initial_sidebar_state="auto")
+st.set_page_config(page_title="AI Pro Studio V6.8", page_icon="🚀", layout="wide", initial_sidebar_state="auto")
 
 st.markdown("""
 <style>
@@ -89,12 +89,19 @@ def get_card_info(card_key):
     except: pass
     return None
 
+# 🌟 核心升级：同时扣减最终积分，增加消耗积分
 def deduct_balance(card_key, amount):
     try:
-        res = supabase.table("user_cards").select("used_points").eq("card_key", card_key).execute()
+        # 同时读取 used_points 和 刚建的 final_points
+        res = supabase.table("user_cards").select("used_points, final_points").eq("card_key", card_key).execute()
         if res.data:
-            new_val = res.data[0]['used_points'] + amount
-            supabase.table("user_cards").update({"used_points": new_val}).eq("card_key", card_key).execute()
+            new_used = res.data[0]['used_points'] + amount
+            new_final = res.data[0]['final_points'] - amount
+            # 同时更新这两个字段
+            supabase.table("user_cards").update({
+                "used_points": new_used,
+                "final_points": new_final
+            }).eq("card_key", card_key).execute()
     except: pass
 
 # ==========================================
@@ -119,7 +126,12 @@ if not card_info:
     st.stop() 
 
 user_key = query_key
-current_balance = card_info['total_points'] - card_info['used_points']
+
+# 🌟 核心读取：现在的可用余额直接等于数据库里的 final_points
+current_balance = card_info.get('final_points', 0)
+total_pts = card_info.get('total_points', 0)
+used_pts = card_info.get('used_points', 0)
+
 clean_api_name = (card_info.get('api_secret_name') or "API_VIP888").strip("'").strip()
 GRSAI_API_KEY = st.secrets.get(clean_api_name, "")
 
@@ -153,7 +165,7 @@ def pil_to_data_uri(img):
     return f"data:image/jpeg;base64,{base64.b64encode(buffered.getvalue()).decode()}"
 
 # ==========================================
-# 自动轮询与炫酷动态充电条 (加入金融级防扣安全锁)
+# 自动轮询与炫酷动态充电条 (防扣安全锁版)
 # ==========================================
 def auto_poll_task(task_id, active_user_key, model_used, start_time):
     placeholder = st.empty()
@@ -180,7 +192,6 @@ def auto_poll_task(task_id, active_user_key, model_used, start_time):
                     full_bar = f"""<div style="background-color: #1a1a1a; border-radius: 10px; padding: 4px; border: 1px solid #333;"><div style="height: 14px; border-radius: 6px; background: linear-gradient(90deg, #00ff88, #00c2ff); width: 100%; box-shadow: 0 0 10px #00ff88;"></div></div><div style="text-align: right; color: #00ff88; font-size: 13px; font-weight: bold; margin-top: 6px; font-family: monospace;">✅ 绘制完成！</div>{imgs_html}"""
                     placeholder.markdown(full_bar, unsafe_allow_html=True)
                     
-                    # 🌟 核心：防重扣费安全锁 🌟
                     for t in st.session_state.tasks:
                         if t['task_id'] == task_id:
                             # 只有没扣过费的任务，才执行扣费
@@ -188,10 +199,8 @@ def auto_poll_task(task_id, active_user_key, model_used, start_time):
                                 num_images = len(results)
                                 total_cost = num_images * cost_per_img
                                 deduct_balance(active_user_key, total_cost)
-                                # 扣完立刻上锁
                                 t['is_deducted'] = True
                                 
-                            # 更新任务状态
                             t['status'] = 'succeeded'
                             t['urls'] = urls
                             
@@ -207,7 +216,7 @@ def auto_poll_task(task_id, active_user_key, model_used, start_time):
                     
                     error_dict = {
                         "The current model has a high load, please use another model": "当前模型并发排队拥挤，请稍后再试，或切换至 VIP 模型",
-                        "We are sorry, but the images we created may have violated our relevant policies. If you think we made a mistake, please try again or edit your prompt.": "❌ 触发安全审查：生成的内容疑似包含违禁元素，请修改提示词",
+                        "We are sorry, but the images we created may have violated our relevant policies. If you think we made a mistake, please try again or edit your prompt.": "❌ 触发安全审查：生成的内容疑似包含违禁元素",
                         "error": "云端生成异常或触发安全审查，请调整提示词"
                     }
                     cn_error = error_dict.get(actual_err, f"系统异常: {actual_err}")
@@ -216,7 +225,6 @@ def auto_poll_task(task_id, active_user_key, model_used, start_time):
                         if t['task_id'] == task_id: 
                             t['status'] = 'failed'
                             t['reason'] = cn_error
-                            # 失败的任务无需扣费，确保安全
                     clean_and_get_tasks(active_user_key)
                     st.rerun()
         except: pass
@@ -232,9 +240,25 @@ def auto_poll_task(task_id, active_user_key, model_used, start_time):
 # ==========================================
 # 4. 主界面
 # ==========================================
-st.sidebar.markdown(f'### 👤 用户中心\n当前用户: `{user_key}`')
-st.sidebar.markdown(f'剩余积分: <span style="color:#00c2ff; font-weight:bold; font-size:24px;">{current_balance}</span>', unsafe_allow_html=True)
-st.sidebar.markdown(f'<div style="font-size:13px; color:#666;">标准模式约可制 <b style="color:#333;">{current_balance//600}</b> 张<br>VIP 模式约可制 <b style="color:#333;">{current_balance//900}</b> 张</div>', unsafe_allow_html=True)
+st.sidebar.markdown(f'### 👤 用户中心\n当前账户: `{user_key}`')
+
+st.sidebar.markdown(f"""
+<div style="background-color: #1e1e1e; padding: 15px; border-radius: 12px; border: 1px solid #333; box-shadow: inset 0 2px 4px rgba(0,0,0,0.5);">
+    <div style="color: #888; font-size: 13px; margin-bottom: 8px;">💳 额度账户明细</div>
+    <div style="display: flex; justify-content: space-between; font-size: 14px; color: #ddd;">
+        <span>初始总额:</span><span>{total_pts}</span>
+    </div>
+    <div style="display: flex; justify-content: space-between; font-size: 14px; color: #ff4b4b; margin-top: 4px;">
+        <span>累计消耗:</span><span>- {used_pts}</span>
+    </div>
+    <div style="margin-top: 10px; padding-top: 10px; border-top: 1px dashed #444;">
+        <div style="color: #888; font-size: 12px;">可用余额 (最终积分)</div>
+        <div style="color: #00ffd5; font-size: 28px; font-weight: bold; text-shadow: 0 0 10px rgba(0,255,213,0.3);">{current_balance}</div>
+    </div>
+</div>
+""", unsafe_allow_html=True)
+
+st.sidebar.markdown(f'<div style="font-size:12px; color:#666; margin-top:10px; text-align:center;">标准模式约 {current_balance//600} 张 | VIP模式约 {current_balance//900} 张</div>', unsafe_allow_html=True)
 
 if st.sidebar.button("🚪 退出登录", use_container_width=True):
     st.query_params.clear()
@@ -310,7 +334,6 @@ with col_main:
                 
             if sub_res:
                 if sub_res.get("code") == 0:
-                    # 🌟 创建任务时，初始化安全锁为 False
                     add_task({"task_id": sub_res["data"]["id"], "timestamp": time.time(), "time_str": datetime.now().strftime("%H:%M"), "prompt": prompt_txt, "status": "running", "urls": [], "model": selected_model, "is_deducted": False}, user_key)
                     st.success("🎉 任务已提交云端！")
                     time.sleep(0.5)
@@ -339,7 +362,6 @@ with col_history:
                     
                 elif item.get('status') == 'succeeded':
                     for url in item.get('urls', []):
-                        # 原生显示图片，附带赛博朋克模态框点击放大
                         st.image(url, use_container_width=True)
                         
                 elif item.get('status') == 'failed': 
