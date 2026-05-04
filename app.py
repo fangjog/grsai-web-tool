@@ -178,6 +178,7 @@ def auto_poll_task(task_id, active_user_key, model_used):
                     error_dict = {
                         "The current model has a high load, please use another model": "当前模型并发拥挤，请稍后再试，或切换至 VIP 模型",
                         "We are sorry, but the images we created may have violated our relevant policies. If you think we made a mistake, please try again or edit your prompt.": "❌ 触发安全审查：生成的内容疑似包含违禁元素",
+                        "We’re so sorry, but the image we created may violate our content policies. If you think we got it wrong, please retry or edit your prompt.": "❌ 非常抱歉，我们生成的图片可能违反了我们的内容规定。如果您认为我们处理有误，请重新尝试或修改您的指令",
                         "error": "云端生成异常或触发安全审查，请调整提示词"
                     }
                     cn_error = error_dict.get(actual_err, f"系统异常: {actual_err}")
