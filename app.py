@@ -132,37 +132,67 @@ def pil_to_data_uri(img):
     return f"data:image/jpeg;base64,{base64.b64encode(buffered.getvalue()).decode()}"
 
 # ==========================================
-# 进度展示 (动态阶梯计费 + 智能中文报错版)
+# 自动轮询与炫酷动态充电条 (全自动，无需点击)
 # ==========================================
-def show_progress_dialog(task_id, prompt_text, active_user_key, model_used):
-    with st.container():
-        st.markdown("---")
-        st.markdown(f"**🔍 实时生图进度**\n\n**任务描述:** `{prompt_text}`")
-        progress_bar = st.progress(0)
-        status_text = st.empty()
-        
+def auto_poll_task(task_id, active_user_key, model_used):
+    placeholder = st.empty()
     headers = {"Authorization": f"Bearer {GRSAI_API_KEY}", "Content-Type": "application/json"}
     query_url = "https://grsai.dakka.com.cn/v1/draw/result"
-    
     cost_per_img = MODEL_COSTS.get(model_used, 600)
     
+    # 炫酷的动态渐变发光 CSS
+    css_style = """
+    <style>
+    @keyframes electric-sweep {
+        0% { background-position: 0% 50%; }
+        50% { background-position: 100% 50%; }
+        100% { background-position: 0% 50%; }
+    }
+    @keyframes pulse-glow {
+        0% { box-shadow: 0 0 5px #00c2ff, 0 0 10px #00c2ff; }
+        50% { box-shadow: 0 0 15px #00ffd5, 0 0 20px #00ffd5; }
+        100% { box-shadow: 0 0 5px #00c2ff, 0 0 10px #00c2ff; }
+    }
+    .cyber-bar-container {
+        width: 100%; background-color: #111; border-radius: 8px; padding: 3px; border: 1px solid #333; margin-top: 5px;
+    }
+    .cyber-bar-fill {
+        height: 12px; border-radius: 5px;
+        background: linear-gradient(90deg, #ff007a, #7928ca, #00c2ff, #00ffd5);
+        background-size: 300% 300%;
+        animation: electric-sweep 2s ease infinite, pulse-glow 2s ease-in-out infinite;
+        transition: width 0.5s ease-out;
+    }
+    </style>
+    """
+
     for i in range(40):
         p = min(5 + i*2, 95)
-        track = "━" * int((p/100)*25) + "🏃‍♂️" + "  " * (25 - int((p/100)*25)) + "🏁"
-        status_text.markdown(f"**云端绘制中...**\n\n{track} **{p}%**")
-        progress_bar.progress(p)
+        # 渲染动态充电条
+        html_bar = f"""
+        {css_style}
+        <div class="cyber-bar-container">
+            <div class="cyber-bar-fill" style="width: {p}%;"></div>
+        </div>
+        <div style="text-align: right; color: #00ffd5; font-size: 13px; font-weight: bold; margin-top: 5px;">
+            ⚡ 云端算力注入中... {p}%
+        </div>
+        """
+        placeholder.markdown(html_bar, unsafe_allow_html=True)
+        
         try:
             q_res = requests.post(query_url, headers=headers, json={"id": task_id}, verify=False).json()
             if q_res.get("code") == 0:
                 status = q_res["data"]["status"]
                 if status == "succeeded":
-                    progress_bar.progress(100)
+                    # 瞬间充满的动画
+                    full_bar = html_bar.replace(f"width: {p}%", "width: 100%").replace(f"{p}%", "100%").replace("云端算力注入中...", "✅ 绘制完成！")
+                    placeholder.markdown(full_bar, unsafe_allow_html=True)
+                    
                     results = q_res["data"]["results"]
                     num_images = len(results)
-                    
                     total_cost = num_images * cost_per_img
                     deduct_balance(active_user_key, total_cost)
-                    status_text.success(f"✅ **生成成功！(共出 {num_images} 张，已扣除 {total_cost} 积分)**")
                     
                     urls = [img["url"] for img in results]
                     for t in st.session_state.tasks:
@@ -170,36 +200,36 @@ def show_progress_dialog(task_id, prompt_text, active_user_key, model_used):
                             t['status'] = 'succeeded'
                             t['urls'] = urls
                     clean_and_get_tasks(active_user_key)
-                    time.sleep(1.5)
-                    st.rerun()
+                    time.sleep(1)
+                    st.rerun() # 刷新页面展示大图
                 elif status == "failed":
-                    # 🌟 智能错误捕获与自动翻译拦截器 🌟
                     raw_reason = q_res["data"].get("failure_reason", "")
                     raw_error = q_res["data"].get("error", "")
-                    
-                    # 提取真正的报错信息（优先抓取 error 字段）
                     actual_err = raw_error if raw_error and raw_error != "error" else raw_reason
                     
-                    # 常见英文报错本地翻译映射表
                     error_dict = {
                         "The current model has a high load, please use another model": "当前模型并发拥挤，请稍后再试，或切换至 VIP 模型",
-                        "We are sorry, but the images we created may have violated our relevant policies. If you think we made a mistake, please try again or edit your prompt.": "❌ 触发安全审查：生成的内容疑似包含违禁元素，请修改提示词后重试",
+                        "We are sorry, but the images we created may have violated our relevant policies. If you think we made a mistake, please try again or edit your prompt.": "❌ 触发安全审查：生成的内容疑似包含违禁元素，请修改提示词",
                         "error": "云端生成异常或触发安全审查，请调整提示词"
                     }
-                    
-                    # 匹配翻译，如果没有匹配到，就显示原英文
                     cn_error = error_dict.get(actual_err, f"系统异常: {actual_err}")
                     
-                    status_text.error(f"❌ **任务失败:** {cn_error} (失败不扣除积分)")
                     for t in st.session_state.tasks:
                         if t['task_id'] == task_id: 
                             t['status'] = 'failed'
-                            t['reason'] = cn_error # 把翻译后的中文原因存入历史记录
+                            t['reason'] = cn_error
                     clean_and_get_tasks(active_user_key)
-                    break
+                    st.rerun()
         except: pass
         time.sleep(3)
-
+        
+    # 如果超时了
+    for t in st.session_state.tasks:
+        if t['task_id'] == task_id and t['status'] == 'running':
+            t['status'] = 'failed'
+            t['reason'] = "请求超时，请检查网络或稍后重试"
+    clean_and_get_tasks(active_user_key)
+    st.rerun()
 # ==========================================
 # 4. 主界面
 # ==========================================
@@ -291,29 +321,23 @@ with col_history:
     else:
         with st.container(height=700):
             for item in reversed(tasks_list):
-                # 1. 模型标识
                 model_used_badge = "👑 VIP" if item.get('model') == 'gpt-image-2-vip' else "普"
-                
-                # 2. 提示词截断处理 (超过10个字加省略号)
                 prompt_text = item.get('prompt', '')
                 short_prompt = prompt_text[:10] + "..." if len(prompt_text) > 10 else prompt_text
                 
-                # 3. 完美排版：时间 + 模型 + 短提示词
                 st.markdown(f"**[{item['time_str']}]** `{model_used_badge}` 💡 {short_prompt}")
                 
-                # 4. 隐藏式一键复制折叠面板
                 with st.expander("📋 展开复制完整提示词"):
                     st.code(prompt_text, language="text")
 
+                # 🌟 核心改动：不再需要点击按钮，只要状态是 running，立刻原地拉起炫酷充电条！
                 if item.get('status') == 'running':
-                    if st.button("🔍 查看进度", key=item['task_id'], use_container_width=True):
-                        show_progress_dialog(item['task_id'], item['prompt'], user_key, item.get('model', 'gpt-image-2'))
+                    auto_poll_task(item['task_id'], user_key, item.get('model', 'gpt-image-2'))
+                    
                 elif item.get('status') == 'succeeded':
                     for url in item.get('urls', []):
                         st.markdown(f'<a href="{url}" target="_blank"><img src="{url}" style="width:100%; border-radius:8px; cursor:zoom-in; transition: transform 0.2s; box-shadow: 0 2px 6px rgba(0,0,0,0.1); margin-bottom:8px;" onmouseover="this.style.transform=\'scale(1.02)\'" onmouseout="this.style.transform=\'scale(1)\'"></a>', unsafe_allow_html=True)
                 elif item.get('status') == 'failed': 
-                    # 🌟 重点升级：提取并显示具体的失败原因 🌟
-                    # 如果有具体的 reason 就显示，如果没有就给个默认提示
                     fail_msg = item.get('reason', '触发安全审查或云端接口异常')
                     st.error(f"❌ 失败原因: {fail_msg}")
                     
