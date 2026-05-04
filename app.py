@@ -10,43 +10,25 @@ import json
 import os
 from streamlit_drawable_canvas import st_canvas
 from supabase import create_client, Client
-import pytz # 确保 requirements.txt 里有 pytz
+import pytz 
 
 # ==========================================
-# 0. 网页基础配置与全局 CSS
+# 0. 网页基础配置
 # ==========================================
-st.set_page_config(page_title="AI Pro Studio V6.14+", page_icon="🚀", layout="wide", initial_sidebar_state="auto")
+st.set_page_config(page_title="AI Pro Studio V6.16", page_icon="🚀", layout="wide", initial_sidebar_state="auto")
 
+# 🌟 修复抖动、修复放大、修复圆角的全局 CSS
 st.markdown("""
 <style>
-    @media (max-width: 768px) {
-        .block-container { padding: 1rem 0.5rem !important; }
-        h1 { font-size: 24px !important; }
-        .stButton > button { width: 100% !important; padding: 15px !important; font-size: 16px !important; border-radius: 12px !important; }
-    }
-    /* 彻底防止右侧记录区抖动 */
+    @media (max-width: 768px) { .block-container { padding: 1rem 0.5rem !important; } }
     [data-testid="stVerticalBlock"] { overflow-x: hidden !important; }
-    
     .stButton > button { border-radius: 8px; font-weight: bold; transition: all 0.3s; }
     .stButton > button:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
-    
-    /* HTML 模态框核心 CSS */
-    .result-thumb {
-        width: 100%; border-radius: 8px; cursor: zoom-in; 
-        transition: transform 0.2s ease-in-out; 
-        box-shadow: 0 2px 6px rgba(0,0,0,0.1); margin-top: 10px;
-    }
-    .result-thumb:hover { transform: scale(1.02); box-shadow: 0 6px 16px rgba(0,0,0,0.2); }
-    .img-modal-overlay {
-        display: none; position: fixed; z-index: 99999; top: 0; left: 0; 
-        width: 100%; height: 100%; background-color: rgba(0,0,0,0.95); 
-        align-items: center; justify-content: center; cursor: zoom-out; text-decoration: none !important;
-    }
+    .result-thumb { width: 100%; border-radius: 8px; cursor: zoom-in; transition: transform 0.2s; box-shadow: 0 2px 6px rgba(0,0,0,0.1); margin-top: 10px; }
+    .result-thumb:hover { transform: scale(1.02); }
+    .img-modal-overlay { display: none; position: fixed; z-index: 99999; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.9); align-items: center; justify-content: center; cursor: zoom-out; text-decoration: none !important; }
     .img-modal-overlay:target { display: flex; opacity: 1; }
-    .img-modal-overlay img {
-        max-width: 95%; max-height: 95%; border-radius: 12px; 
-        box-shadow: 0 0 40px rgba(0,194,255,0.3); border: 1px solid rgba(0,194,255,0.2); 
-    }
+    .img-modal-overlay img { max-width: 95%; max-height: 95%; border-radius: 12px; box-shadow: 0 0 40px rgba(0,194,255,0.3); border: 1px solid rgba(0,194,255,0.2); }
 </style>
 """, unsafe_allow_html=True)
 
@@ -61,12 +43,7 @@ except:
     st.error("❌ 数据库连接失败。")
     st.stop()
 
-# 🌟 预设全局北京时区
 BJ_TZ = pytz.timezone('Asia/Shanghai')
-
-def get_bj_time():
-    return datetime.now(BJ_TZ).strftime("%H:%M")
-
 MODEL_COSTS = {"gpt-image-2": 600, "gpt-image-2-vip": 900}
 TASKS_FILE = "tasks_history.json"
 ratio_opts = ["auto", "1:1", "3:2", "2:3", "16:9", "9:16", "5:4", "4:5", "4:3", "3:4", "21:9", "9:21", "1:3", "3:1", "2:1", "1:2", "自定义像素"]
@@ -107,15 +84,14 @@ card_info = get_card_info(user_key)
 
 if not card_info:
     st.markdown("<br><br><br>", unsafe_allow_html=True) 
-    col1, col2, col3 = st.columns([1, 2, 1]) 
+    c1, col2, c3 = st.columns([1, 2, 1]) 
     with col2:
-        st.markdown("<div style='text-align: center;'><h1>🚀 AI Pro Studio</h1><p>输入激活码解锁创作台</p></div>", unsafe_allow_html=True)
+        st.markdown("<h1 style='text-align:center;'>🚀 AI Pro Studio</h1>", unsafe_allow_html=True)
         u_input = st.text_input("激活码", type="password", placeholder="🔑 输入激活码解锁...")
-        if st.button("立即解锁 ✨", type="primary", use_container_width=True):
+        if st.button("立即解锁进入系统 ✨", type="primary", use_container_width=True):
             if get_card_info(u_input.strip()):
-                st.query_params["key"] = u_input.strip()
-                st.rerun()
-            else: st.error("❌ 激活码无效。")
+                st.query_params["key"] = u_input.strip(); st.rerun()
+            else: st.error("❌ 激活码无效")
     st.stop() 
 
 current_balance = card_info.get('final_points', 0)
@@ -124,40 +100,40 @@ used_pts = card_info.get('used_points', 0)
 GRSAI_API_KEY = st.secrets.get((card_info.get('api_secret_name') or "API_VIP888").strip("'").strip(), "")
 
 # ==========================================
-# 3. 任务队列
+# 3. 任务管理
 # ==========================================
 if 'tasks' not in st.session_state:
     st.session_state.tasks = load_json(TASKS_FILE).get(user_key, [])
 
-def clean_and_get_tasks():
+def clean_and_save_tasks():
     curr = time.time()
+    # 自动清理 1 小时前的记录，保留最近 10 条
     st.session_state.tasks = [t for t in st.session_state.tasks if (curr - t['timestamp']) < 3600][-10:]
-    all_h = load_json(TASKS_FILE)
-    all_h[user_key] = st.session_state.tasks
+    all_h = load_json(TASKS_FILE); all_h[user_key] = st.session_state.tasks
     save_json(TASKS_FILE, all_h)
     return st.session_state.tasks
 
 def pil_to_data_uri(img):
-    buffered = io.BytesIO()
+    buf = io.BytesIO()
     if img.mode != 'RGB': img = img.convert('RGB')
-    img.thumbnail((1024, 1024)) 
-    img.save(buffered, format="JPEG")
-    return f"data:image/jpeg;base64,{base64.b64encode(buffered.getvalue()).decode()}"
+    img.thumbnail((1024, 1024)); img.save(buf, format="JPEG")
+    return f"data:image/jpeg;base64,{base64.b64encode(buf.getvalue()).decode()}"
 
 # ==========================================
-# 自动轮询 (稳健渲染版：防止源码外泄)
+# 自动轮询 (修正 ID 冲突 & 杜绝源码泄露)
 # ==========================================
 def auto_poll_task(task_id, active_user_key, model_used, start_time):
     placeholder = st.empty()
     headers = {"Authorization": f"Bearer {GRSAI_API_KEY}", "Content-Type": "application/json"}
     query_url = "https://grsai.dakka.com.cn/v1/draw/result"
     
+    # 格式化 ID 防止 CSS 语法错误
+    safe_id = "".join(filter(str.isalnum, task_id))
+    
     for i in range(60):
-        # 🌟 修复进度条乱跳：绑定真实时间
         p = min(5 + int(time.time() - start_time), 95)
-        # 🌟 核心：使用 placeholder.container() 杜绝 HTML 被识别为源码
-        with placeholder.container():
-            st.markdown(f'<div style="background:#1a1a1a;border-radius:10px;padding:4px;border:1px solid #333;"><div style="height:14px;border-radius:6px;background:linear-gradient(90deg,#00c2ff,#00ffd5);width:{p}%;transition:width 0.5s;"></div></div><div style="text-align:right;color:#00ffd5;font-size:12px;margin-top:4px;font-family:monospace;">⚡ 云端算力注入中... {p}%</div>', unsafe_allow_html=True)
+        # 稳健渲染进度条
+        placeholder.markdown(f'<div style="background:#1a1a1a;border-radius:10px;padding:4px;border:1px solid #333;"><div style="height:14px;border-radius:6px;background:linear-gradient(90deg,#00c2ff,#00ffd5);width:{p}%;"></div></div><div style="text-align:right;color:#00ffd5;font-size:12px;margin-top:4px;font-family:monospace;">⚡ 云端算力注入中... {p}%</div>', unsafe_allow_html=True)
         
         try:
             q_res = requests.post(query_url, headers=headers, json={"id": task_id}, verify=False).json()
@@ -165,44 +141,34 @@ def auto_poll_task(task_id, active_user_key, model_used, start_time):
                 status = q_res["data"]["status"]
                 if status == "succeeded":
                     urls = [img["url"] for img in q_res["data"]["results"]]
-                    # 瞬间充满并渲染图
                     with placeholder.container():
-                        st.markdown(f'<div style="background:#1a1a1a;border-radius:10px;padding:4px;border:1px solid #333;"><div style="height:14px;border-radius:6px;background:linear-gradient(90deg,#00ff88,#00c2ff);width:100%;box-shadow:0 0 10px #00ff88;"></div></div><div style="text-align:right;color:#00ff88;font-size:12px;margin-top:4px;font-weight:bold;">✅ 绘制完成！</div>', unsafe_allow_html=True)
+                        st.markdown(f'<div style="background:#1a1a1a;border-radius:10px;padding:4px;border:1px solid #333;"><div style="height:14px;border-radius:6px;background:linear-gradient(90deg,#00ff88,#00c2ff);width:100%;box-shadow:0 0 10px #00ff88;"></div></div><div style="text-align:right;color:#00ff88;font-size:12px;margin-top:4px;">✅ 绘制完成！</div>', unsafe_allow_html=True)
                         for idx, url in enumerate(urls):
-                            m_id = f"m_poll_{task_id[:8]}_{idx}"
+                            m_id = f"m_poll_{safe_id}_{idx}"
                             st.markdown(f'<a href="#{m_id}"><img src="{url}" class="result-thumb" style="border:2px solid #00ff88;"></a><a href="#!" class="img-modal-overlay" id="{m_id}"><img src="{url}"></a>', unsafe_allow_html=True)
                     
-                    # 财务审计
+                    # 🌟 计费双重锁定
                     for t in st.session_state.tasks:
                         if t['task_id'] == task_id and not t.get('is_deducted'):
                             deduct_balance(active_user_key, len(urls) * MODEL_COSTS.get(model_used, 600))
                             t.update({"status": "succeeded", "urls": urls, "is_deducted": True})
-                    
-                    clean_and_get_tasks(); time.sleep(2); st.rerun()
-                    return 
+                    clean_and_save_tasks(); time.sleep(2); st.rerun(); return 
                 elif status == "failed":
                     for t in st.session_state.tasks:
-                        if t['task_id'] == task_id: t.update({"status": "failed", "reason": "触发安全审查或接口异常"})
-                    clean_and_get_tasks(); st.rerun()
+                        if t['task_id'] == task_id: t.update({"status": "failed", "reason": "触发安全审查"})
+                    clean_and_save_tasks(); st.rerun(); return
         except: pass
         time.sleep(3)
-    st.rerun()
 
 # ==========================================
-# 4. 主界面布局
+# 4. 主界面布局 (保持 7:3)
 # ==========================================
 st.sidebar.markdown(f'### 👤 用户中心\n`{user_key}`')
 st.sidebar.markdown(f"""
-<div style="background-color: #1e1e1e; padding: 15px; border-radius: 12px; border: 1px solid #333; box-shadow: inset 0 2px 4px rgba(0,0,0,0.5);">
-    <div style="color: #888; font-size: 13px; margin-bottom: 8px;">💳 额度账户明细</div>
-    <div style="display: flex; justify-content: space-between; font-size: 14px; color: #ddd;">
-        <span>初始总额:</span><span>{total_pts}</span>
-    </div>
-    <div style="display: flex; justify-content: space-between; font-size: 14px; color: #ff4b4b; margin-top: 4px;">
-        <span>累计消耗:</span><span>- {used_pts}</span>
-    </div>
-    <div style="margin-top: 10px; padding-top: 10px; border-top: 1px dashed #444;">
-        <div style="color: #888; font-size: 12px;">可用余额 (最终积分)</div>
+<div style="background-color: #1e1e1e; padding: 15px; border-radius: 12px; border: 1px solid #333;">
+    <div style="color: #888; font-size: 13px;">获取总额: {total_pts}</div>
+    <div style="color: #ff4b4b; font-size: 13px;">累计消耗: -{used_pts}</div>
+    <div style="margin-top: 10px; border-top: 1px dashed #444; padding-top: 10px;">
         <div style="color: #00ffd5; font-size: 28px; font-weight: bold;">{current_balance}</div>
     </div>
 </div>
@@ -219,18 +185,17 @@ col_main, col_history = st.columns([7, 3])
 
 with col_main:
     selected_model = st.selectbox("🤖 模型选择", ["gpt-image-2", "gpt-image-2-vip"])
-    
     if menu == "✍️ 文生图":
-        prompt_txt = st.text_area("画面描述词", height=150, placeholder="描述你想要的画面...")
+        prompt_txt = st.text_area("画面描述", height=150, placeholder="描述词...")
     else:
-        st.markdown("#### 🖼️ 图生图")
+        st.markdown("#### 🖼️ 图生图模式")
         files = st.file_uploader("上传参考图", type=["png", "jpg"], accept_multiple_files=True)
         if files:
             cols = st.columns(6)
             for i, f in enumerate(files): cols[i%6].image(Image.open(f), use_container_width=True)
         canvas_result = None
         if not files: canvas_result = st_canvas(fill_color="rgba(255,165,0,0.3)", height=300, key="cvs")
-        prompt_txt = st.text_area("垫图指令", height=100, placeholder="基于原图修改...")
+        prompt_txt = st.text_area("垫图指令", height=100, placeholder="基于原图的修改描述...")
 
     c1, c2 = st.columns(2)
     with c1: 
@@ -252,20 +217,19 @@ with col_main:
             try:
                 res = requests.post("https://grsai.dakka.com.cn/v1/draw/completions", headers={"Authorization": f"Bearer {GRSAI_API_KEY}"}, json=payload, verify=False).json()
                 if res.get("code") == 0:
-                    # 🌟 关键点：这里记录的是中国时间
+                    bj_now = datetime.now(BJ_TZ).strftime("%H:%M")
                     st.session_state.tasks.append({
-                        "task_id": res["data"]["id"], "timestamp": time.time(), 
-                        "time_str": get_bj_time(), "prompt": prompt_txt, 
-                        "status": "running", "urls": [], "model": selected_model, "is_deducted": False
+                        "task_id": res["data"]["id"], "timestamp": time.time(), "time_str": bj_now, 
+                        "prompt": prompt_txt, "status": "running", "urls": [], "model": selected_model, "is_deducted": False
                     })
-                    clean_and_get_tasks()
-                    st.success("🎉 已提交云端"); time.sleep(0.5); st.rerun()
-                else: st.error(f"❌ 发起失败: {res.get('msg')}")
-            except: st.error("📡 网络异常")
+                    clean_and_save_tasks()
+                    st.success("🎉 任务已提交云端！"); time.sleep(0.5); st.rerun()
+                else: st.error(f"❌ 失败: {res.get('msg')}")
+            except: st.error("📡 网络异常，请检查配置")
 
 with col_history:
     st.markdown("### 🗂️ 创作记录")
-    tasks_list = clean_and_get_tasks() if 'tasks' in st.session_state else []
+    tasks_list = clean_and_save_tasks() if 'tasks' in st.session_state else []
     with st.container(height=700):
         for item in reversed(tasks_list):
             m_badge = "👑 VIP" if item.get('model') == 'gpt-image-2-vip' else "普"
@@ -275,8 +239,9 @@ with col_history:
             if item['status'] == 'running':
                 auto_poll_task(item['task_id'], user_key, item['model'], item['timestamp'])
             elif item['status'] == 'succeeded':
+                safe_item_id = "".join(filter(str.isalnum, item['task_id']))
                 for idx, url in enumerate(item['urls']):
-                    m_id = f"m_hist_{item['task_id'][:8]}_{idx}"
+                    m_id = f"m_h_{safe_item_id}_{idx}"
                     st.markdown(f'<a href="#{m_id}"><img src="{url}" class="result-thumb"></a><a href="#!" class="img-modal-overlay" id="{m_id}"><img src="{url}"></a>', unsafe_allow_html=True)
             elif item['status'] == 'failed': st.error(f"❌ {item.get('reason', '生成失败')}")
             st.divider()
