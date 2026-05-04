@@ -15,7 +15,7 @@ import pytz
 # ==========================================
 # 0. 网页基础配置与防抖 CSS
 # ==========================================
-st.set_page_config(page_title="AI Pro Studio V6.22", page_icon="🚀", layout="wide", initial_sidebar_state="auto")
+st.set_page_config(page_title="AI Pro Studio V6.24", page_icon="🚀", layout="wide", initial_sidebar_state="auto")
 
 st.markdown("""
 <style>
@@ -24,7 +24,6 @@ st.markdown("""
     .stButton > button { border-radius: 8px; font-weight: bold; transition: all 0.3s; }
     .stButton > button:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
     
-    /* 稳健原生 CSS 锚点放大方案 */
     .thumb-img { 
         width: 100%; border-radius: 8px; cursor: zoom-in; box-shadow: 0 2px 6px rgba(0,0,0,0.1); 
         margin-top: 10px; transition: transform 0.2s; display: block; opacity: 1 !important; 
@@ -50,7 +49,7 @@ try:
     SUPABASE_URL = st.secrets["SUPABASE_URL"]
     SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
     supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
-except:
+except Exception as e:
     st.error("❌ 数据库连接失败。")
     st.stop()
 
@@ -63,12 +62,13 @@ quality_opts = ["auto", "high", "medium", "low"]
 def parse_api_response(text):
     if not text: return None
     try: return json.loads(text)
-    except: pass
+    except Exception as e: pass
+    
     for line in text.split('\n'):
         line = line.strip()
         if line.startswith('data:'):
             try: return json.loads(line[5:].strip())
-            except: pass
+            except Exception as e: pass
     return None
 
 def load_json(path, default=None):
@@ -76,19 +76,19 @@ def load_json(path, default=None):
     if os.path.exists(path):
         try:
             with open(path, "r", encoding="utf-8") as f: return json.load(f)
-        except: return default
+        except Exception as e: return default
     return default
 
 def save_json(path, data):
     try:
         with open(path, "w", encoding="utf-8") as f: json.dump(data, f, ensure_ascii=False)
-    except: pass
+    except Exception as e: pass
 
 def get_card_info(card_key):
     try:
         res = supabase.table("user_cards").select("*").eq("card_key", card_key).eq("is_active", True).execute()
         return res.data[0] if res.data else None
-    except: return None
+    except Exception as e: return None
 
 def deduct_balance(card_key, amount):
     try:
@@ -96,7 +96,7 @@ def deduct_balance(card_key, amount):
         if res.data:
             u, f = res.data[0]['used_points'], res.data[0]['final_points']
             supabase.table("user_cards").update({"used_points": u + amount, "final_points": f - amount}).eq("card_key", card_key).execute()
-    except: pass
+    except Exception as e: pass
 
 # ==========================================
 # 2. 身份验证
@@ -140,11 +140,19 @@ def pil_to_data_uri(img):
     img.thumbnail((1024, 1024)); img.save(buf, format="JPEG")
     return f"data:image/jpeg;base64,{base64.b64encode(buf.getvalue()).decode()}"
 
+def get_success_html(task_id, urls):
+    safe_id = "".join(filter(str.isalnum, str(task_id)))
+    html = f'<div style="background:#1a1a1a;border-radius:10px;padding:4px;"><div style="height:12px;border-radius:6px;background:linear-gradient(90deg,#00ff88,#00c2ff);width:100%;"></div></div><div style="text-align:right;color:#00ff88;font-size:12px;margin-top:4px;">✅ 绘制完成！</div><div class="image-gallery" style="margin-top: 10px;">'
+    for idx, url in enumerate(urls):
+        m_id = f"zm_{safe_id}_{idx}"
+        html += f'<a href="#{m_id}"><img src="{url}" class="thumb-img" style="border:2px solid #00ff88;"></a><a href="#!" class="zoom-modal" id="{m_id}"><img src="{url}"></a>'
+    html += '</div>'
+    return html
+
 def auto_poll_task(task_id, active_user_key, model_used, start_time):
     placeholder = st.empty()
     headers = {"Authorization": f"Bearer {GRSAI_API_KEY}", "Content-Type": "application/json"}
     query_url = "https://grsai.dakka.com.cn/v1/draw/result"
-    safe_id = "".join(filter(str.isalnum, str(task_id))) 
     
     for i in range(60):
         p = min(5 + int(time.time() - start_time), 95)
@@ -168,30 +176,39 @@ def auto_poll_task(task_id, active_user_key, model_used, start_time):
 
                 if status == "succeeded":
                     if urls:
-                        success_html = f'<div style="background:#1a1a1a;border-radius:10px;padding:4px;"><div style="height:12px;border-radius:6px;background:linear-gradient(90deg,#00ff88,#00c2ff);width:100%;"></div></div><div style="text-align:right;color:#00ff88;font-size:12px;margin-top:4px;">✅ 绘制完成！</div><div class="image-gallery" style="margin-top: 10px;">'
-                        for idx, url in enumerate(urls):
-                            m_id = f"zm_{safe_id}_{idx}"
-                            success_html += f'<a href="#{m_id}"><img src="{url}" class="thumb-img" style="border:2px solid #00ff88;"></a><a href="#!" class="zoom-modal" id="{m_id}"><img src="{url}"></a>'
-                        success_html += '</div>'
-                        
-                        placeholder.markdown(success_html, unsafe_allow_html=True)
+                        placeholder.markdown(get_success_html(task_id, urls), unsafe_allow_html=True)
                         
                         for t in st.session_state.tasks:
                             if t['task_id'] == task_id and not t.get('is_deducted'):
                                 deduct_balance(active_user_key, len(urls) * MODEL_COSTS.get(model_used, 600))
                                 t.update({"status": "succeeded", "urls": urls, "is_deducted": True})
-                        clean_and_save_tasks(); time.sleep(1.5); st.rerun(); return 
+                        clean_and_save_tasks()
+                        time.sleep(1.5)
+                        
+                        # 🌟 核心破局：确保 rerun 能够畅通无阻地被执行，跳出这个死循环
+                        st.rerun() 
+                        return 
                     else:
                         for t in st.session_state.tasks:
-                            if t['task_id'] == task_id: t.update({"status": "failed", "reason": "服务器状态成功但未回传图片，可能是内容违规被拦截"})
-                        clean_and_save_tasks(); st.rerun(); return
+                            if t['task_id'] == task_id: t.update({"status": "failed", "reason": "服务器状态成功但未回传图片"})
+                        clean_and_save_tasks()
+                        st.rerun()
+                        return
 
                 elif status == "failed":
                     for t in st.session_state.tasks:
                         if t['task_id'] == task_id: t.update({"status": "failed", "reason": "触发安全审查或云端失败"})
-                    clean_and_save_tasks(); st.rerun(); return
-        except: pass
+                    clean_and_save_tasks()
+                    st.rerun()
+                    return
+        except Exception as e: 
+            # 🌟 修复关键：以前是 except: pass，这会把 Streamlit 的内部系统指令也拦截掉。
+            # 现在限定为只捕获 Python 级别的普通 Exception，不再阻挡 st.rerun()！
+            pass
+            
         time.sleep(3)
+        
+    st.rerun()
 
 # ==========================================
 # 4. 主界面
@@ -241,14 +258,13 @@ with col_main:
         if current_balance < cost: st.error("❌ 积分不足")
         elif not prompt_txt and menu == "✍️ 文生图": st.error("请输入提示词")
         else:
-            # 🌟 核心破案点：必须带上 "webHook": "-1"，打死不能删，否则 API 就死机卡住！
             payload = {
                 "model": selected_model, 
                 "prompt": prompt_txt, 
                 "aspectRatio": custom_size or aspect_ratio, 
                 "quality": quality, 
                 "shutProgress": True,
-                "webHook": "-1"  # 🌟 恢复这个核心暗号，让 API 秒回 Task ID！
+                "webHook": "-1"  
             }
             if menu == "🖼️ 图生图":
                 u_list = [pil_to_data_uri(Image.open(f)) for f in files] if files else [pil_to_data_uri(Image.fromarray(canvas_result.image_data.astype('uint8'), 'RGBA'))] if canvas_result else []
@@ -293,12 +309,7 @@ with col_history:
             if item['status'] == 'running':
                 auto_poll_task(item['task_id'], user_key, item['model'], item['timestamp'])
             elif item['status'] == 'succeeded':
-                safe_item_id = "".join(filter(str.isalnum, str(item['task_id'])))
-                hist_html = '<div class="image-gallery">'
-                for idx, url in enumerate(item['urls']):
-                    m_id = f"zm_h_{safe_item_id}_{idx}"
-                    hist_html += f'<a href="#{m_id}"><img src="{url}" class="thumb-img"></a><a href="#!" class="zoom-modal" id="{m_id}"><img src="{url}"></a>'
-                hist_html += '</div>'
-                st.markdown(hist_html, unsafe_allow_html=True)
-            elif item['status'] == 'failed': st.error(f"❌ {item.get('reason', '失败')}")
+                st.markdown(get_success_html(item['task_id'], item['urls']), unsafe_allow_html=True)
+            elif item['status'] == 'failed': 
+                st.error(f"❌ {item.get('reason', '失败')}")
             st.divider()
