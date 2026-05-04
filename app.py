@@ -15,7 +15,7 @@ import pytz
 # ==========================================
 # 0. 网页基础配置与全局 CSS
 # ==========================================
-st.set_page_config(page_title="AI Pro Studio V6.34", page_icon="🚀", layout="wide", initial_sidebar_state="auto")
+st.set_page_config(page_title="AI Pro Studio V6.35", page_icon="🚀", layout="wide", initial_sidebar_state="auto")
 
 st.markdown("""
 <style>
@@ -23,25 +23,86 @@ st.markdown("""
     .stButton > button { border-radius: 8px; font-weight: bold; transition: all 0.3s; }
     .stButton > button:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
     
+    /* === 🌟 核心升级：ComfyUI 风格对比框 CSS === */
     .modal-checkbox { display: none !important; }
+    
+    /* 缩略图样式 */
     .result-thumb {
         width: 100%; border-radius: 8px; cursor: zoom-in; 
         transition: transform 0.2s ease-in-out; 
-        box-shadow: 0 2px 6px rgba(0,0,0,0.1); margin-bottom: 8px;
-        display: block; opacity: 1 !important;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.1); margin-bottom: 8px; display: block;
     }
     .result-thumb:hover { transform: scale(1.02); box-shadow: 0 6px 16px rgba(0,0,0,0.2); }
+    
+    /* 背景遮罩 */
     .img-modal-overlay {
         display: none; position: fixed; z-index: 999999; top: 0; left: 0; 
-        width: 100vw; height: 100vh; background-color: rgba(0,0,0,0.92); 
+        width: 100vw; height: 100vh; background-color: rgba(0,0,0,0.95); 
         align-items: center; justify-content: center; cursor: zoom-out; 
     }
     .modal-checkbox:checked + .img-modal-overlay { display: flex; }
-    .img-modal-overlay img {
-        max-width: 95vw; max-height: 95vh; border-radius: 12px; 
-        box-shadow: 0 0 40px rgba(0,194,255,0.3); border: 1px solid rgba(0,194,255,0.2); object-fit: contain;
+    
+    /* 对比容器 */
+    .compare-container {
+        position: relative;
+        width: 90vw; max-width: 1200px; height: 85vh; 
+        border-radius: 12px; overflow: hidden;
+        box-shadow: 0 0 50px rgba(0,194,255,0.2);
+        border: 1px solid rgba(255,255,255,0.1);
+        cursor: default; /* 防止内部点击触发模态框关闭 */
     }
+    
+    /* 底层图 (上传图 Before) */
+    .compare-img-before {
+        position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+        object-fit: contain; pointer-events: none;
+    }
+    
+    /* 顶层图 (成品图 After) - 默认显示右半边 */
+    .compare-img-after {
+        position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+        object-fit: contain; pointer-events: none;
+        clip-path: polygon(50% 0, 100% 0, 100% 100%, 50% 100%);
+    }
+    
+    /* 滑块控件 */
+    .compare-slider {
+        position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+        outline: none; background: transparent; 
+        -webkit-appearance: none; appearance: none; margin: 0;
+        z-index: 10;
+    }
+    
+    /* 滑动条的“线”和“手柄” */
+    .compare-slider::-webkit-slider-thumb {
+        -webkit-appearance: none; appearance: none;
+        width: 4px; height: 100vh; background: #00ffd5;
+        cursor: ew-resize; box-shadow: 0 0 10px rgba(0,255,213,0.8);
+    }
+    .compare-slider::-moz-range-thumb {
+        width: 4px; height: 100vh; background: #00ffd5;
+        cursor: ew-resize; box-shadow: 0 0 10px rgba(0,255,213,0.8); border: none;
+    }
+    
+    /* 标签文字 */
+    .badge-before { position: absolute; left: 20px; bottom: 20px; background: rgba(0,0,0,0.6); color: #fff; padding: 6px 12px; border-radius: 6px; font-size: 14px; font-weight: bold; pointer-events: none; z-index: 5; border: 1px solid rgba(255,255,255,0.2); }
+    .badge-after { position: absolute; right: 20px; bottom: 20px; background: rgba(0,255,213,0.2); color: #00ffd5; padding: 6px 12px; border-radius: 6px; font-size: 14px; font-weight: bold; pointer-events: none; z-index: 5; border: 1px solid rgba(0,255,213,0.4); }
+
 </style>
+""", unsafe_allow_html=True)
+
+# 动态 CSS 生成：由于 Streamlit 不能直接写 JS，我们生成 100 个类来对应 1% 到 100% 的滑动位置
+# 这里注入一个微型的一段式 Script 仅用于更新 CSS 变量，确保滑动丝滑
+st.markdown("""
+<script>
+    document.addEventListener('input', function (e) {
+        if (e.target.classList.contains('compare-slider')) {
+            const container = e.target.parentElement;
+            const afterImg = container.querySelector('.compare-img-after');
+            afterImg.style.clipPath = `polygon(${e.target.value}% 0, 100% 0, 100% 100%, ${e.target.value}% 100%)`;
+        }
+    });
+</script>
 """, unsafe_allow_html=True)
 
 # ==========================================
@@ -60,7 +121,6 @@ except Exception as e:
     st.error("❌ 数据库连接失败。")
     st.stop()
 
-# --- 核心：云端历史记录 ---
 def fetch_tasks_from_db(card_key):
     try:
         res = supabase.table("tasks").select("*").eq("card_key", card_key).order("timestamp", desc=True).limit(30).execute()
@@ -83,7 +143,6 @@ def clear_history_db(card_key):
         return True
     except: return False
 
-# --- 核心：提示词模板库 ---
 def fetch_templates(card_key):
     try:
         res = supabase.table("prompt_templates").select("*").eq("card_key", card_key).order("created_at", desc=True).execute()
@@ -102,7 +161,6 @@ def toggle_template_shortcut(temp_id, current_status):
     try: supabase.table("prompt_templates").update({"is_shortcut": not current_status}).eq("id", temp_id).execute()
     except: pass
 
-# --- 基础工具 ---
 def get_card_info(card_key):
     try:
         res = supabase.table("user_cards").select("*").eq("card_key", card_key).eq("is_active", True).execute()
@@ -166,7 +224,7 @@ GRSAI_API_KEY = st.secrets.get(clean_api_name, "")
 # ==========================================
 # 3. 自动轮询 
 # ==========================================
-def auto_poll_task(task_id, active_user_key, model_used, start_time):
+def auto_poll_task(task_id, active_user_key, model_used, start_time, src_urls=None):
     placeholder = st.empty()
     headers = {"Authorization": f"Bearer {GRSAI_API_KEY}", "Content-Type": "application/json"}
     query_url = "https://grsai.dakka.com.cn/v1/draw/result"
@@ -189,7 +247,12 @@ def auto_poll_task(task_id, active_user_key, model_used, start_time):
                 if status == "succeeded" and urls:
                     placeholder.markdown(f'<div style="background:#111;border-radius:10px;padding:4px;border:1px solid #333;"><div style="height:12px;border-radius:6px;background:linear-gradient(90deg,#00ff88,#00c2ff);width:100%;"></div></div><div style="text-align:right;color:#00ff88;font-size:12px;margin-top:4px;">✅ 绘制完成！</div>', unsafe_allow_html=True)
                     deduct_balance(active_user_key, MODEL_COSTS.get(model_used, 600))
-                    sync_task_to_db({"task_id": task_id, "status": "succeeded", "urls": [urls[0]], "is_deducted": True}, active_user_key)
+                    
+                    # 保存任务时，连同垫图的原图数据一起保存，用于后续滑动对比
+                    task_update = {"task_id": task_id, "status": "succeeded", "urls": [urls[0]], "is_deducted": True}
+                    if src_urls: task_update["src_urls"] = src_urls # 将传上来的原图 Base64 数组存入云端
+                    
+                    sync_task_to_db(task_update, active_user_key)
                     time.sleep(1.5); st.rerun(); return 
                 elif status == "failed":
                     sync_task_to_db({"task_id": task_id, "status": "failed"}, active_user_key)
@@ -229,7 +292,6 @@ with col_main:
     all_temps = fetch_templates(user_key)
     shortcuts = [t for t in all_temps if t['is_shortcut']]
     
-    # 🌟 核心：将快捷按钮渲染逻辑封装，方便按需调用
     def render_shortcut_buttons():
         if shortcuts:
             st.caption("✨ 快捷描述词模板")
@@ -240,9 +302,10 @@ with col_main:
                     st.rerun()
 
     upload_zoom_container = st.empty()
+    uploaded_b64_urls = [] # 用于提交时暂存原图 Base64
     
     if menu == "✍️ 文生图":
-        render_shortcut_buttons() # 文生图：在输入框正上方
+        render_shortcut_buttons()
         prompt_txt = st.text_area("画面描述", value=st.session_state.current_prompt, height=120)
     else:
         st.markdown("#### 🖼️ 图生图")
@@ -253,6 +316,7 @@ with col_main:
             for i, file in enumerate(uploaded_files):
                 img_bytes = file.getvalue()
                 data_uri = pil_to_data_uri(Image.open(io.BytesIO(img_bytes)))
+                uploaded_b64_urls.append(data_uri) # 保存下来
                 zoom_id = f"zm_up_{i}" 
                 with p_cols[i % 6]:
                     st.markdown(f'''
@@ -270,7 +334,6 @@ with col_main:
         if not uploaded_files:
             canvas_result = st_canvas(fill_color="rgba(255,165,0,0.3)", height=300, key="cvs")
         
-        # 图生图：确保快捷按钮出现在图片下方、输入框的正上方！
         render_shortcut_buttons() 
         prompt_txt = st.text_area("垫图指令", value=st.session_state.current_prompt, height=80)
         
@@ -292,28 +355,14 @@ with col_main:
             with st.spinner("🚀 正在注入云端算力..."):
                 try:
                     final_ratio = custom_size if (menu == "✍️ 文生图" and aspect_ratio == "自定义像素") else (aspect_ratio if menu == "✍️ 文生图" else "auto")
-                    payload = {
-                        "model": selected_model, 
-                        "prompt": prompt_txt, 
-                        "webHook": "-1", 
-                        "shutProgress": True,
-                        "aspectRatio": final_ratio,
-                        "quality": quality if menu == "✍️ 文生图" else "auto"
-                    }
+                    payload = {"model": selected_model, "prompt": prompt_txt, "webHook": "-1", "shutProgress": True, "aspectRatio": final_ratio, "quality": quality if menu == "✍️ 文生图" else "auto"}
                     
                     if menu == "🖼️ 图生图":
-                        if not uploaded_files: 
-                            st.error("⚠️ 请先上传参考图"); st.stop()
-                        try:
-                            payload["urls"] = [pil_to_data_uri(Image.open(io.BytesIO(f.getvalue()))) for f in uploaded_files]
-                        except Exception as img_err:
-                            st.error(f"❌ 图片处理失败: {str(img_err)}"); st.stop()
+                        if not uploaded_files: st.error("⚠️ 请先上传参考图"); st.stop()
+                        payload["urls"] = uploaded_b64_urls # 直接使用已转换好的 base64 数组
                     
                     headers = {"Authorization": f"Bearer {GRSAI_API_KEY}", "Content-Type": "application/json"}
-                    response = requests.post(
-                        "https://grsai.dakka.com.cn/v1/draw/completions", 
-                        headers=headers, json=payload, verify=False, timeout=30
-                    )
+                    response = requests.post("https://grsai.dakka.com.cn/v1/draw/completions", headers=headers, json=payload, verify=False, timeout=30)
                     
                     if response.status_code == 200:
                         api_res = parse_api_response(response.text)
@@ -322,18 +371,18 @@ with col_main:
                         if task_id:
                             bj_now = datetime.now(BJ_TZ).strftime("%H:%M")
                             new_task = {"task_id": task_id, "timestamp": time.time(), "time_str": bj_now, "prompt": prompt_txt, "status": "running", "urls": [], "model": selected_model}
+                            
+                            # 如果是图生图，把原图的 Base64 一起传进去（作为 src_urls），为了以后的对比
+                            if menu == "🖼️ 图生图": new_task["src_urls"] = uploaded_b64_urls
+                            
                             sync_task_to_db(new_task, user_key)
                             st.rerun() 
-                        else:
-                            st.error(f"❌ API未返回有效ID: {response.text[:100]}")
-                    else:
-                        st.error(f"📡 API 服务器报错: {response.text[:100]}")
+                        else: st.error(f"❌ API未返回有效ID")
+                    else: st.error(f"📡 API 服务器报错")
                         
-                except Exception as global_err:
-                    st.error(f"💥 提交发生致命错误: {str(global_err)}")
+                except Exception as global_err: st.error(f"💥 提交发生致命错误: {str(global_err)}")
 
     st.divider()
-    # 🌟 提示词库管理与自定义模板
     with st.expander("📚 提示词库管理与自定义模板"):
         t_c1, t_c2 = st.columns([1, 2])
         with t_c1:
@@ -350,21 +399,14 @@ with col_main:
         if not all_temps: st.caption("暂无模板。")
         else:
             for t in all_temps:
-                # 重新规划宽度比例，确保按钮放得下
                 tc1, tc2, tc3, tc4 = st.columns([2, 4, 1.5, 1])
                 tc1.write(f"**{t['name']}**")
                 tc2.caption(t['content'][:30] + "...")
-                
-                # 🌟 一键固定/取消快捷按钮
                 is_pinned = t['is_shortcut']
                 if tc3.button("📌 取消固定" if is_pinned else "📍 固定快捷", key=f"pin_{t['id']}", use_container_width=True):
-                    toggle_template_shortcut(t['id'], is_pinned)
-                    st.rerun()
-                
-                # 🌟 删除按钮修复
+                    toggle_template_shortcut(t['id'], is_pinned); st.rerun()
                 if tc4.button("🗑️ 删除", key=f"del_{t['id']}", use_container_width=True):
-                    delete_template(t['id'])
-                    st.rerun()
+                    delete_template(t['id']); st.rerun()
 
 with col_history:
     c_hist, c_clear = st.columns([3, 1])
@@ -387,13 +429,41 @@ with col_history:
                 with st.expander("📋 完整提示词"): st.code(item['prompt'], language="text")
                 
                 if item['status'] == 'running':
-                    auto_poll_task(item['task_id'], user_key, item.get('model','gpt-image-2'), item['timestamp'])
+                    src_u = item.get('src_urls') # 传递原图参数用于轮询成功后的保存
+                    auto_poll_task(item['task_id'], user_key, item.get('model','gpt-image-2'), item['timestamp'], src_u)
                 elif item['status'] == 'succeeded':
                     urls = item.get('urls', [])
+                    src_urls = item.get('src_urls', []) # 尝试获取原图（如果图生图）
+                    
                     imgs_html = ""
                     for i, url in enumerate(urls):
                         modal_id = f"cb_{str(item['task_id']).replace('-','')}_{i}"
-                        imgs_html += f'<label for="{modal_id}"><img src="{url}" class="result-thumb"></label><input type="checkbox" id="{modal_id}" class="modal-checkbox"><label for="{modal_id}" class="img-modal-overlay"><img src="{url}"></label>'
+                        
+                        # 🌟 核心判断：如果有对应的原图，则渲染“滑动对比模态框”！
+                        if src_urls and i < len(src_urls):
+                            before_url = src_urls[i]
+                            after_url = url
+                            
+                            imgs_html += f'''
+                                <label for="{modal_id}"><img src="{after_url}" class="result-thumb"></label>
+                                <input type="checkbox" id="{modal_id}" class="modal-checkbox">
+                                <label for="{modal_id}" class="img-modal-overlay">
+                                    <div class="compare-container" onclick="event.stopPropagation();">
+                                        <img src="{before_url}" class="compare-img-before">
+                                        <div class="badge-before">原图 (Before)</div>
+                                        
+                                        <img src="{after_url}" class="compare-img-after">
+                                        <div class="badge-after">成品 (After)</div>
+                                        
+                                        <input type="range" min="0" max="100" value="50" class="compare-slider">
+                                    </div>
+                                    <div style="position:absolute; top:20px; right:30px; color:#fff; font-size:30px; cursor:pointer;">&times;</div>
+                                </label>
+                            '''
+                        else:
+                            # 正常的单图放大（文生图，或没有原图）
+                            imgs_html += f'<label for="{modal_id}"><img src="{url}" class="result-thumb"></label><input type="checkbox" id="{modal_id}" class="modal-checkbox"><label for="{modal_id}" class="img-modal-overlay"><img src="{url}"></label>'
+                            
                     st.markdown(imgs_html, unsafe_allow_html=True)
                 elif item['status'] == 'failed': 
                     st.error(f"❌ 失败/未通过审查")
