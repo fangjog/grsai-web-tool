@@ -182,7 +182,7 @@ def show_progress_dialog(task_id, prompt_text, active_user_key, model_used):
                     
                     # 常见英文报错本地翻译映射表（后续有新的英文报错，可以直接在这里加）
                     error_dict = {
-                        "The current model has a high load, please use another model": "当前模型并发排队拥挤，请稍后再试，或切换至 VIP 模型",
+                        "The current model has a high load, please use another model": "当前模型并发排队拥挤，请稍后再试，或切换至 其他 模型",
                         "error": "云端生成异常或触发安全审查，请调整提示词"
                     }
                     
