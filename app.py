@@ -15,14 +15,71 @@ import pytz
 # ==========================================
 # 0. 网页基础配置与全局 CSS
 # ==========================================
-st.set_page_config(page_title="AI Pro Studio V6.40", page_icon="🚀", layout="wide", initial_sidebar_state="auto")
+st.set_page_config(page_title="AI Pro Studio V6.41", page_icon="🚀", layout="wide", initial_sidebar_state="auto")
 
 st.markdown("""
 <style>
     [data-testid="stVerticalBlock"] { overflow-x: hidden !important; }
-    /* 美化原生按钮 */
     .stButton > button { border-radius: 8px; font-weight: bold; transition: all 0.3s; }
     .stButton > button:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+    
+    /* 🌟 HTML 模态框核心 CSS (终极防拦截版) */
+    .modal-checkbox { display: none !important; }
+    
+    /* 遮罩层：默认隐藏，Checkbox选中时显示 */
+    .img-modal-overlay {
+        display: none; position: fixed; z-index: 999999; top: 0; left: 0; 
+        width: 100vw; height: 100vh; align-items: center; justify-content: center; 
+    }
+    .modal-checkbox:checked ~ .img-modal-overlay { display: flex !important; }
+    
+    /* 黑色半透明背景：点击关闭 */
+    .modal-close-bg {
+        position: absolute; top:0; left:0; width:100%; height:100%; 
+        background: rgba(0,0,0,0.92); cursor: zoom-out; z-index: 1;
+    }
+    
+    /* 并排对比框容器 */
+    .compare-wrapper {
+        position: relative; z-index: 10;
+        width: 85vw; max-width: 1400px; height: 85vh; 
+        background: #1e1e1e; border-radius: 12px;
+        display: flex; flex-direction: column;
+        box-shadow: 0 0 50px rgba(0,0,0,0.8);
+        border: 1px solid #444;
+    }
+    
+    .compare-header {
+        display: flex; justify-content: space-between; align-items: center;
+        padding: 15px 20px; background: #2a2a2a; border-radius: 12px 12px 0 0;
+        border-bottom: 1px solid #444;
+    }
+    
+    .close-btn { color: #aaa; font-size: 32px; cursor: pointer; font-weight: bold; line-height: 0.8; }
+    .close-btn:hover { color: #ff4b4b; }
+    
+    .view-side {
+        flex: 1; display: flex; gap: 2px; background: #111; overflow: hidden; border-radius: 0 0 12px 12px;
+    }
+    .side-panel {
+        flex: 1; position: relative; background: #0b0b0b; display: flex; align-items: center; justify-content: center;
+    }
+    .side-panel img { width: 100%; height: 100%; object-fit: contain; }
+    
+    .side-label { 
+        position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); 
+        background: rgba(0,0,0,0.8); color: #fff; padding: 8px 18px; 
+        border-radius: 20px; font-size: 15px; font-weight:bold; border: 1px solid #555;
+    }
+    
+    /* 单图放大容器 */
+    .single-img-container {
+        position: relative; z-index: 10; max-width: 90vw; max-height: 90vh;
+    }
+    .single-img-container img {
+        max-width: 90vw; max-height: 90vh; border-radius: 12px; 
+        box-shadow: 0 0 50px rgba(0,0,0,0.8); object-fit: contain;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -116,21 +173,7 @@ def parse_api_response(text):
     return None
 
 # ==========================================
-# 2. 核心交互组件：原生对话框 (方案 A)
-# ==========================================
-@st.dialog("🖼️ 图像优化对比", width="large")
-def show_comparison_dialog(before_url, after_url):
-    st.info("💡 左右对比模式：点击图片可全屏放大查看细节。")
-    c1, c2 = st.columns(2)
-    with c1:
-        st.markdown("**📤 原图 (Before)**")
-        st.image(before_url, use_container_width=True)
-    with c2:
-        st.markdown("**✨ 成品 (After)**")
-        st.image(after_url, use_container_width=True)
-
-# ==========================================
-# 3. 身份验证
+# 2. 身份验证
 # ==========================================
 query_key = st.query_params.get("key", "")
 card_info = get_card_info(query_key) if query_key else None
@@ -157,7 +200,7 @@ clean_api_name = (card_info.get('api_secret_name') or "API_VIP888").strip("'").s
 GRSAI_API_KEY = st.secrets.get(clean_api_name, "")
 
 # ==========================================
-# 4. 自动轮询 
+# 3. 自动轮询 
 # ==========================================
 def auto_poll_task(task_id, active_user_key, model_used, start_time, src_urls=None):
     placeholder = st.empty()
@@ -194,7 +237,7 @@ def auto_poll_task(task_id, active_user_key, model_used, start_time, src_urls=No
         time.sleep(3)
 
 # ==========================================
-# 5. 主界面
+# 4. 主界面
 # ==========================================
 st.sidebar.markdown(f'### 👤 用户中心\n`{user_key}`')
 st.sidebar.markdown(f"""
@@ -248,9 +291,11 @@ with col_main:
                 img_bytes = file.getvalue()
                 data_uri = pil_to_data_uri(Image.open(io.BytesIO(img_bytes)))
                 uploaded_b64_urls.append(data_uri) 
+                zoom_id = f"zm_up_{i}" 
                 with p_cols[i % 6]:
-                    # 🌟 方案A：预览区也改为最稳定的原生 st.image，点击自带放大！
-                    st.image(data_uri, caption=f"图 {i+1}", use_container_width=True)
+                    # 🌟 原生无缝防黑屏代码 (上传区预览)
+                    html_str = f'<div class="modal-wrapper" style="position:relative;"><label for="{zoom_id}" style="cursor:zoom-in;display:block;"><img src="{data_uri}" style="width:100%;border-radius:8px;box-shadow:0 2px 6px rgba(0,0,0,0.1);transition:transform 0.2s;" onmouseover="this.style.transform=\'scale(1.02)\'" onmouseout="this.style.transform=\'scale(1)\'"><div style="text-align:center;font-size:11px;color:#aaa;margin-top:4px;">图 {i+1} (点击放大)</div></label><input type="checkbox" id="{zoom_id}" class="modal-checkbox"><div class="img-modal-overlay"><label for="{zoom_id}" class="modal-close-bg"></label><div class="single-img-container"><img src="{data_uri}"></div></div></div>'
+                    st.markdown(html_str, unsafe_allow_html=True)
         
         canvas_result = None
         if not uploaded_files: canvas_result = st_canvas(fill_color="rgba(255,165,0,0.3)", height=300, key="cvs")
@@ -344,13 +389,18 @@ with col_history:
                     src_urls = item.get('src_urls', []) 
                     
                     for i, url in enumerate(urls):
-                        # 🌟 方案A 核心：直接使用原生 st.image 展示缩略图，自带原生无Bug放大！
-                        st.image(url, use_container_width=True)
+                        modal_id = f"cb_{str(item['task_id']).replace('-','')}_{i}"
                         
-                        # 🌟 方案A 核心：如果有原图，提供一个原生按钮，点击弹出对比对话框！
+                        # 🌟 终极防屏蔽技术：确保 HTML 所有标签压缩在一行，绝不给 Streamlit 插入 <br> 或 <p> 破坏标签兄弟关系的机会！
                         if src_urls and i < len(src_urls):
-                            if st.button("🪟 左右对比 (原图 vs 成品)", key=f"btn_comp_{item['task_id']}_{i}", use_container_width=True):
-                                show_comparison_dialog(src_urls[i], url)
-                                
+                            before_url = src_urls[i]
+                            after_url = url
+                            
+                            html_str = f'<div class="modal-wrapper" style="position:relative;"><label for="{modal_id}" style="cursor:zoom-in;display:block;"><img src="{after_url}" style="width:100%;border-radius:8px;box-shadow:0 2px 6px rgba(0,0,0,0.1);transition:transform 0.2s;" onmouseover="this.style.transform=\'scale(1.02)\'" onmouseout="this.style.transform=\'scale(1)\'"><div style="text-align:center;font-size:11px;color:#aaa;margin-top:4px;">图 {i+1} (点击对比)</div></label><input type="checkbox" id="{modal_id}" class="modal-checkbox"><div class="img-modal-overlay"><label for="{modal_id}" class="modal-close-bg"></label><div class="compare-wrapper"><div class="compare-header"><span style="color:#fff;font-size:16px;font-weight:bold;">🪟 图像优化对比</span><label for="{modal_id}" class="close-btn">&times;</label></div><div class="view-side"><div class="side-panel"><img src="{before_url}"><div class="side-label">原图 (Before)</div></div><div class="side-panel"><img src="{after_url}"><div class="side-label">成品 (After)</div></div></div></div></div></div>'
+                            st.markdown(html_str, unsafe_allow_html=True)
+                        else:
+                            html_str = f'<div class="modal-wrapper" style="position:relative;"><label for="{modal_id}" style="cursor:zoom-in;display:block;"><img src="{url}" style="width:100%;border-radius:8px;box-shadow:0 2px 6px rgba(0,0,0,0.1);transition:transform 0.2s;" onmouseover="this.style.transform=\'scale(1.02)\'" onmouseout="this.style.transform=\'scale(1)\'"></label><input type="checkbox" id="{modal_id}" class="modal-checkbox"><div class="img-modal-overlay"><label for="{modal_id}" class="modal-close-bg"></label><div class="single-img-container"><img src="{url}"></div></div></div>'
+                            st.markdown(html_str, unsafe_allow_html=True)
+                            
                 elif item['status'] == 'failed': st.error(f"❌ 失败/未通过审查")
                 st.divider()
