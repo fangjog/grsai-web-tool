@@ -132,7 +132,7 @@ def pil_to_data_uri(img):
     return f"data:image/jpeg;base64,{base64.b64encode(buffered.getvalue()).decode()}"
 
 # ==========================================
-# 自动轮询与炫酷动态充电条 (全自动，无需点击)
+# 自动轮询与炫酷动态充电条 (已修复 Markdown 缩进 Bug)
 # ==========================================
 def auto_poll_task(task_id, active_user_key, model_used):
     placeholder = st.empty()
@@ -140,44 +140,12 @@ def auto_poll_task(task_id, active_user_key, model_used):
     query_url = "https://grsai.dakka.com.cn/v1/draw/result"
     cost_per_img = MODEL_COSTS.get(model_used, 600)
     
-    # 炫酷的动态渐变发光 CSS
-    css_style = """
-    <style>
-    @keyframes electric-sweep {
-        0% { background-position: 0% 50%; }
-        50% { background-position: 100% 50%; }
-        100% { background-position: 0% 50%; }
-    }
-    @keyframes pulse-glow {
-        0% { box-shadow: 0 0 5px #00c2ff, 0 0 10px #00c2ff; }
-        50% { box-shadow: 0 0 15px #00ffd5, 0 0 20px #00ffd5; }
-        100% { box-shadow: 0 0 5px #00c2ff, 0 0 10px #00c2ff; }
-    }
-    .cyber-bar-container {
-        width: 100%; background-color: #111; border-radius: 8px; padding: 3px; border: 1px solid #333; margin-top: 5px;
-    }
-    .cyber-bar-fill {
-        height: 12px; border-radius: 5px;
-        background: linear-gradient(90deg, #ff007a, #7928ca, #00c2ff, #00ffd5);
-        background-size: 300% 300%;
-        animation: electric-sweep 2s ease infinite, pulse-glow 2s ease-in-out infinite;
-        transition: width 0.5s ease-out;
-    }
-    </style>
-    """
-
     for i in range(40):
         p = min(5 + i*2, 95)
-        # 渲染动态充电条
-        html_bar = f"""
-        {css_style}
-        <div class="cyber-bar-container">
-            <div class="cyber-bar-fill" style="width: {p}%;"></div>
-        </div>
-        <div style="text-align: right; color: #00ffd5; font-size: 13px; font-weight: bold; margin-top: 5px;">
-            ⚡ 云端算力注入中... {p}%
-        </div>
-        """
+        
+        # 🌟 修复关键：取消所有换行缩进，写成紧凑的一行，彻底杜绝被识别为代码块
+        html_bar = f"""<div style="background-color: #1a1a1a; border-radius: 10px; padding: 4px; box-shadow: inset 0 1px 3px rgba(0,0,0,0.5); border: 1px solid #333;"><div style="height: 14px; border-radius: 6px; background: linear-gradient(90deg, #00c2ff, #00ffd5); width: {p}%; transition: width 0.5s ease-in-out; box-shadow: 0 0 10px #00ffd5;"></div></div><div style="text-align: right; color: #00ffd5; font-size: 13px; font-weight: bold; margin-top: 6px; font-family: monospace;">⚡ 云端算力注入中... {p}%</div>"""
+        
         placeholder.markdown(html_bar, unsafe_allow_html=True)
         
         try:
@@ -186,7 +154,7 @@ def auto_poll_task(task_id, active_user_key, model_used):
                 status = q_res["data"]["status"]
                 if status == "succeeded":
                     # 瞬间充满的动画
-                    full_bar = html_bar.replace(f"width: {p}%", "width: 100%").replace(f"{p}%", "100%").replace("云端算力注入中...", "✅ 绘制完成！")
+                    full_bar = f"""<div style="background-color: #1a1a1a; border-radius: 10px; padding: 4px; border: 1px solid #333;"><div style="height: 14px; border-radius: 6px; background: linear-gradient(90deg, #00ff88, #00c2ff); width: 100%; box-shadow: 0 0 10px #00ff88;"></div></div><div style="text-align: right; color: #00ff88; font-size: 13px; font-weight: bold; margin-top: 6px; font-family: monospace;">✅ 绘制完成！</div>"""
                     placeholder.markdown(full_bar, unsafe_allow_html=True)
                     
                     results = q_res["data"]["results"]
@@ -201,7 +169,7 @@ def auto_poll_task(task_id, active_user_key, model_used):
                             t['urls'] = urls
                     clean_and_get_tasks(active_user_key)
                     time.sleep(1)
-                    st.rerun() # 刷新页面展示大图
+                    st.rerun()
                 elif status == "failed":
                     raw_reason = q_res["data"].get("failure_reason", "")
                     raw_error = q_res["data"].get("error", "")
@@ -209,7 +177,7 @@ def auto_poll_task(task_id, active_user_key, model_used):
                     
                     error_dict = {
                         "The current model has a high load, please use another model": "当前模型并发拥挤，请稍后再试，或切换至 VIP 模型",
-                        "We are sorry, but the images we created may have violated our relevant policies. If you think we made a mistake, please try again or edit your prompt.": "触发安全审查：生成的内容疑似包含违禁元素，请修改提示词",
+                        "We are sorry, but the images we created may have violated our relevant policies. If you think we made a mistake, please try again or edit your prompt.": "❌ 触发安全审查：生成的内容疑似包含违禁元素",
                         "error": "云端生成异常或触发安全审查，请调整提示词"
                     }
                     cn_error = error_dict.get(actual_err, f"系统异常: {actual_err}")
@@ -223,13 +191,13 @@ def auto_poll_task(task_id, active_user_key, model_used):
         except: pass
         time.sleep(3)
         
-    # 如果超时了
     for t in st.session_state.tasks:
         if t['task_id'] == task_id and t['status'] == 'running':
             t['status'] = 'failed'
             t['reason'] = "请求超时，请检查网络或稍后重试"
     clean_and_get_tasks(active_user_key)
     st.rerun()
+
 # ==========================================
 # 4. 主界面
 # ==========================================
@@ -304,15 +272,23 @@ with col_main:
                 payload["quality"] = quality
 
             headers = {"Authorization": f"Bearer {GRSAI_API_KEY}", "Content-Type": "application/json"}
+            
+            # 🌟 修复版：将网络请求与页面刷新彻底分离，防止误拦截
+            sub_res = None
             try:
                 sub_res = requests.post("https://grsai.dakka.com.cn/v1/draw/completions", headers=headers, json=payload, verify=False).json()
+            except Exception as e:
+                # 只有真正连不上网、发不起任务时，才会走到这里
+                st.error("📡 网络连接异常，无法发起任务，请检查网络或稍后重试。")
+                
+            if sub_res:
                 if sub_res.get("code") == 0:
-                    # 🌟 提交时将选择的模型记入队列
                     add_task({"task_id": sub_res["data"]["id"], "timestamp": time.time(), "time_str": datetime.now().strftime("%H:%M"), "prompt": prompt_txt, "status": "running", "urls": [], "model": selected_model}, user_key)
-                    st.success("🎉 任务已提交！")
-                    time.sleep(1); st.rerun()
-                else: st.error(f"失败：{sub_res.get('msg')}")
-            except: st.error("网络异常")
+                    st.success("🎉 任务已提交云端！")
+                    time.sleep(0.5)
+                    st.rerun() # 现在它绝不会被当作网络异常拦截了！
+                else: 
+                    st.error(f"❌ 发起失败：{sub_res.get('msg')}")
 
 with col_history:
     st.markdown("### 🗂️ 创作记录")
