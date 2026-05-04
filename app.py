@@ -15,7 +15,7 @@ import pytz
 # ==========================================
 # 0. 网页基础配置与防抖 CSS
 # ==========================================
-st.set_page_config(page_title="AI Pro Studio V6.18", page_icon="🚀", layout="wide", initial_sidebar_state="auto")
+st.set_page_config(page_title="AI Pro Studio V6.19", page_icon="🚀", layout="wide", initial_sidebar_state="auto")
 
 st.markdown("""
 <style>
@@ -24,7 +24,7 @@ st.markdown("""
     .stButton > button { border-radius: 8px; font-weight: bold; transition: all 0.3s; }
     .stButton > button:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
     
-    /* 最稳健的原生 CSS 锚点放大方案 */
+    /* 稳健原生 CSS 锚点放大方案 */
     .thumb-img { 
         width: 100%; border-radius: 8px; cursor: zoom-in; box-shadow: 0 2px 6px rgba(0,0,0,0.1); 
         margin-top: 10px; transition: transform 0.2s; display: block; opacity: 1 !important; 
@@ -111,7 +111,7 @@ used_pts = card_info.get('used_points', 0)
 GRSAI_API_KEY = st.secrets.get((card_info.get('api_secret_name') or "API_VIP888").strip("'").strip(), "")
 
 # ==========================================
-# 3. 任务与轮询 (隔离式防报错)
+# 3. 任务与轮询 (彻底解决源码泄露与断连)
 # ==========================================
 if 'tasks' not in st.session_state:
     st.session_state.tasks = load_json(TASKS_FILE).get(user_key, [])
@@ -137,32 +137,35 @@ def auto_poll_task(task_id, active_user_key, model_used, start_time):
     
     for i in range(60):
         p = min(5 + int(time.time() - start_time), 95)
-        with placeholder.container():
-            st.markdown(f'<div style="background:#1a1a1a;border-radius:10px;padding:4px;"><div style="height:12px;border-radius:6px;background:linear-gradient(90deg,#00c2ff,#00ffd5);width:{p}%;"></div></div><div style="text-align:right;color:#00ffd5;font-size:12px;margin-top:4px;">⚡ 注入中... {p}%</div>', unsafe_allow_html=True)
+        # 稳健的进度条容器
+        placeholder.markdown(f'<div style="background:#1a1a1a;border-radius:10px;padding:4px;"><div style="height:12px;border-radius:6px;background:linear-gradient(90deg,#00c2ff,#00ffd5);width:{p}%;"></div></div><div style="text-align:right;color:#00ffd5;font-size:12px;margin-top:4px;">⚡ 注入中... {p}%</div>', unsafe_allow_html=True)
         
         try:
-            q_res = requests.post(query_url, headers=headers, json={"id": task_id}, verify=False, timeout=10).json()
+            # 放宽超时到 30 秒，防止网络抖动
+            q_res = requests.post(query_url, headers=headers, json={"id": task_id}, verify=False, timeout=30).json()
             if q_res.get("code") == 0:
                 status = q_res["data"]["status"]
                 if status == "succeeded":
                     urls = [img["url"] for img in q_res["data"]["results"]]
-                    with placeholder.container():
-                        st.markdown(f'<div style="background:#1a1a1a;border-radius:10px;padding:4px;"><div style="height:12px;border-radius:6px;background:linear-gradient(90deg,#00ff88,#00c2ff);width:100%;"></div></div><div style="text-align:right;color:#00ff88;font-size:12px;margin-top:4px;">✅ 绘制完成！</div>', unsafe_allow_html=True)
-                        for idx, url in enumerate(urls):
-                            m_id = f"zm_{safe_id}_{idx}"
-                            st.markdown(f'<a href="#{m_id}"><img src="{url}" class="thumb-img"></a><a href="#!" class="zoom-modal" id="{m_id}"><img src="{url}"></a>', unsafe_allow_html=True)
+                    
+                    # 🌟 HTML 金钟罩：强制用 <div> 块包裹所有图片 a 标签，防止泄露源码
+                    success_html = f'<div style="background:#1a1a1a;border-radius:10px;padding:4px;"><div style="height:12px;border-radius:6px;background:linear-gradient(90deg,#00ff88,#00c2ff);width:100%;"></div></div><div style="text-align:right;color:#00ff88;font-size:12px;margin-top:4px;">✅ 绘制完成！</div><div class="image-gallery" style="margin-top: 10px;">'
+                    for idx, url in enumerate(urls):
+                        m_id = f"zm_{safe_id}_{idx}"
+                        success_html += f'<a href="#{m_id}"><img src="{url}" class="thumb-img" style="border:2px solid #00ff88;"></a><a href="#!" class="zoom-modal" id="{m_id}"><img src="{url}"></a>'
+                    success_html += '</div>'
+                    
+                    placeholder.markdown(success_html, unsafe_allow_html=True)
                     
                     for t in st.session_state.tasks:
                         if t['task_id'] == task_id and not t.get('is_deducted'):
                             deduct_balance(active_user_key, len(urls) * MODEL_COSTS.get(model_used, 600))
                             t.update({"status": "succeeded", "urls": urls, "is_deducted": True})
-                    clean_and_save_tasks(); time.sleep(1.5); st.rerun()
-                    return 
+                    clean_and_save_tasks(); time.sleep(1.5); st.rerun(); return 
                 elif status == "failed":
                     for t in st.session_state.tasks:
                         if t['task_id'] == task_id: t.update({"status": "failed", "reason": "触发安全审查或失败"})
-                    clean_and_save_tasks(); st.rerun()
-                    return
+                    clean_and_save_tasks(); st.rerun(); return
         except: pass
         time.sleep(3)
 
@@ -220,13 +223,13 @@ with col_main:
                 if not u_list: st.error("⚠️ 缺少参考图"); st.stop()
                 payload["urls"] = u_list
             
-            # 🌟 终极隔离提交逻辑，绝不吃需求
+            # 🌟 修复：放宽提交超时到 60 秒，对抗 API 高峰期卡顿
             api_res = None
             err_msg = ""
             try:
-                api_res = requests.post("https://grsai.dakka.com.cn/v1/draw/completions", headers={"Authorization": f"Bearer {GRSAI_API_KEY}"}, json=payload, verify=False, timeout=15).json()
+                api_res = requests.post("https://grsai.dakka.com.cn/v1/draw/completions", headers={"Authorization": f"Bearer {GRSAI_API_KEY}"}, json=payload, verify=False, timeout=60).json()
             except Exception as e:
-                err_msg = "📡 网络超时，请重试"
+                err_msg = "📡 服务器响应拥挤或网络超时，请稍后重试"
                 
             if err_msg:
                 st.error(err_msg)
@@ -239,7 +242,7 @@ with col_main:
                 clean_and_save_tasks()
                 st.success("🎉 已提交")
                 time.sleep(0.5)
-                st.rerun() # 安全刷新
+                st.rerun() 
             elif api_res:
                 st.error(f"❌ 失败: {api_res.get('msg')}")
 
@@ -256,8 +259,14 @@ with col_history:
                 auto_poll_task(item['task_id'], user_key, item['model'], item['timestamp'])
             elif item['status'] == 'succeeded':
                 safe_item_id = "".join(filter(str.isalnum, str(item['task_id'])))
+                
+                # 🌟 同理：历史记录里也加上 <div> 保护壳
+                hist_html = '<div class="image-gallery">'
                 for idx, url in enumerate(item['urls']):
                     m_id = f"zm_h_{safe_item_id}_{idx}"
-                    st.markdown(f'<a href="#{m_id}"><img src="{url}" class="thumb-img"></a><a href="#!" class="zoom-modal" id="{m_id}"><img src="{url}"></a>', unsafe_allow_html=True)
+                    hist_html += f'<a href="#{m_id}"><img src="{url}" class="thumb-img"></a><a href="#!" class="zoom-modal" id="{m_id}"><img src="{url}"></a>'
+                hist_html += '</div>'
+                
+                st.markdown(hist_html, unsafe_allow_html=True)
             elif item['status'] == 'failed': st.error(f"❌ {item.get('reason', '失败')}")
             st.divider()
