@@ -15,7 +15,7 @@ import pytz
 # ==========================================
 # 0. 网页基础配置与全局 CSS
 # ==========================================
-st.set_page_config(page_title="AI Pro Studio V6.43", page_icon="🚀", layout="wide", initial_sidebar_state="auto")
+st.set_page_config(page_title="AI Pro Studio V6.44", page_icon="🚀", layout="wide", initial_sidebar_state="auto")
 
 st.markdown("""
 <style>
@@ -23,7 +23,7 @@ st.markdown("""
     .stButton > button { border-radius: 8px; font-weight: bold; transition: all 0.3s; }
     .stButton > button:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
     
-    /* 🌟 HTML 模态框核心 CSS */
+    /* 🌟 核心 CSS */
     .modal-checkbox { display: none !important; }
     
     .result-thumb {
@@ -41,56 +41,61 @@ st.markdown("""
     }
     .modal-checkbox:checked ~ .img-modal-overlay { display: flex !important; }
     
-    /* 点击背景关闭 */
     .modal-close-bg {
         position: absolute; top:0; left:0; width:100%; height:100%; 
         background: rgba(0,0,0,0.92); cursor: zoom-out; z-index: 1;
     }
     
-    /* 并排对比框容器 */
-    .compare-wrapper {
+    /* 单图放大容器 (默认视图) */
+    .single-view {
+        position: relative; z-index: 10; max-width: 90vw; max-height: 90vh; 
+        border-radius: 12px; overflow: hidden;
+    }
+    .single-view img {
+        max-width: 90vw; max-height: 90vh; border-radius: 12px; 
+        box-shadow: 0 0 50px rgba(0,0,0,0.8); object-fit: contain; display: block;
+    }
+    
+    /* 悬浮唤出对比的按钮 */
+    .toggle-compare-btn {
+        position: absolute; left: 20px; bottom: 20px; z-index: 15;
+        background: rgba(0,255,213,0.8); color: #000; padding: 10px 20px; 
+        border-radius: 8px; font-weight: bold; cursor: pointer;
+        box-shadow: 0 4px 12px rgba(0,255,213,0.3); transition: 0.2s;
+    }
+    .toggle-compare-btn:hover { background: #00ffd5; transform: translateY(-2px); }
+    
+    /* 左右对比框容器 (初始隐藏，由原生 input radio 控制显示) */
+    .compare-radio { display: none; }
+    .compare-view { display: none; }
+    
+    .compare-radio:checked ~ .single-view { display: none; } /* 勾选后隐藏单图 */
+    .compare-radio:checked ~ .compare-view { display: flex; } /* 勾选后显示对比框 */
+    
+    .compare-view {
         position: relative; z-index: 10;
         width: 85vw; max-width: 1400px; height: 85vh; 
         background: #1e1e1e; border-radius: 12px;
-        display: flex; flex-direction: column;
-        box-shadow: 0 0 50px rgba(0,0,0,0.8);
+        flex-direction: column; box-shadow: 0 0 50px rgba(0,0,0,0.8);
         border: 1px solid #444;
     }
     
     .compare-header {
         display: flex; justify-content: space-between; align-items: center;
-        padding: 15px 20px; background: #2a2a2a; border-radius: 12px 12px 0 0;
-        border-bottom: 1px solid #444;
+        padding: 15px 20px; background: #2a2a2a; border-radius: 12px 12px 0 0; border-bottom: 1px solid #444;
     }
     
-    .close-btn { color: #aaa; font-size: 32px; cursor: pointer; font-weight: bold; line-height: 0.8; }
+    .back-btn {
+        background: #444; color: #fff; padding: 6px 16px; border-radius: 6px; cursor: pointer; transition: 0.2s;
+    }
+    .back-btn:hover { background: #555; }
+    .close-btn { color: #aaa; font-size: 32px; cursor: pointer; font-weight: bold; line-height: 0.8; margin-left:10px;}
     .close-btn:hover { color: #ff4b4b; }
     
-    /* 左右视图区域 */
-    .view-side {
-        flex: 1; display: flex; gap: 2px; background: #111; border-radius: 0 0 12px 12px; overflow: hidden;
-    }
-    .side-panel {
-        flex: 1; position: relative; background: #0b0b0b; display: flex; align-items: center; justify-content: center; overflow: hidden;
-    }
-    
-    .side-panel img { 
-        width: 100%; height: 100%; object-fit: contain; transition: transform 0.15s ease-out;
-    }
-    
-    .side-label { 
-        position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); 
-        background: rgba(0,0,0,0.8); color: #fff; padding: 8px 18px; 
-        border-radius: 20px; font-size: 15px; font-weight:bold; border: 1px solid #555; pointer-events: none;
-    }
-    
-    /* 单图放大容器 */
-    .single-img-container {
-        position: relative; z-index: 10; max-width: 90vw; max-height: 90vh; overflow: hidden; border-radius: 12px;
-    }
-    .single-img-container img {
-        max-width: 90vw; max-height: 90vh; border-radius: 12px; box-shadow: 0 0 50px rgba(0,0,0,0.8); object-fit: contain;
-    }
+    .view-side { flex: 1; display: flex; gap: 2px; background: #111; border-radius: 0 0 12px 12px; overflow: hidden;}
+    .side-panel { flex: 1; position: relative; background: #0b0b0b; display: flex; align-items: center; justify-content: center; overflow: hidden;}
+    .side-panel img { width: 100%; height: 100%; object-fit: contain; transition: transform 0.15s ease-out;}
+    .side-label { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.8); color: #fff; padding: 8px 18px; border-radius: 20px; font-size: 15px; font-weight:bold; border: 1px solid #555; pointer-events: none;}
 </style>
 """, unsafe_allow_html=True)
 
@@ -110,15 +115,12 @@ except Exception as e:
     st.error("❌ 数据库连接失败。")
     st.stop()
 
-# 🚀 极致性能优化：内存缓存 Base64 转码，避免打字卡顿，压缩体积加速上传
 @st.cache_data(show_spinner=False, max_entries=20)
 def process_cached_data_uri(img_bytes):
     img = Image.open(io.BytesIO(img_bytes))
     if img.mode != 'RGB': img = img.convert('RGB')
-    # 使用 LANCZOS 高质量抗锯齿缩放
     img.thumbnail((1024, 1024), Image.Resampling.LANCZOS)
     buffered = io.BytesIO()
-    # 开启 optimize 并降低少许 quality，大幅缩减 Payload 体积，加速 API 传输
     img.save(buffered, format="JPEG", quality=82, optimize=True)
     return f"data:image/jpeg;base64,{base64.b64encode(buffered.getvalue()).decode()}"
 
@@ -216,16 +218,15 @@ clean_api_name = (card_info.get('api_secret_name') or "API_VIP888").strip("'").s
 GRSAI_API_KEY = st.secrets.get(clean_api_name, "")
 
 # ==========================================
-# 3. 自动轮询 (高频提速版)
+# 3. 自动轮询 
 # ==========================================
 def auto_poll_task(task_id, active_user_key, model_used, start_time, src_urls=None):
     placeholder = st.empty()
     headers = {"Authorization": f"Bearer {GRSAI_API_KEY}", "Content-Type": "application/json"}
     query_url = "https://grsai.dakka.com.cn/v1/draw/result"
     
-    # 提速：增加循环次数，减少睡眠时间
     for i in range(90):
-        p = min(5 + int((time.time() - start_time) * 1.5), 98) # 进度条走得更顺滑
+        p = min(5 + int((time.time() - start_time) * 1.5), 98) 
         placeholder.markdown(f'<div style="background:#111;border-radius:10px;padding:4px;border:1px solid #333;"><div style="height:12px;border-radius:6px;background:linear-gradient(90deg,#00c2ff,#00ffd5);width:{p}%;"></div></div><div style="text-align:right;color:#00ffd5;font-size:12px;margin-top:4px;">⚡ 生成中... {p}%</div>', unsafe_allow_html=True)
         try:
             resp = requests.post(query_url, headers=headers, json={"id": task_id}, verify=False, timeout=10)
@@ -242,7 +243,6 @@ def auto_poll_task(task_id, active_user_key, model_used, start_time, src_urls=No
                 if status == "succeeded" and urls:
                     placeholder.markdown(f'<div style="background:#111;border-radius:10px;padding:4px;border:1px solid #333;"><div style="height:12px;border-radius:6px;background:linear-gradient(90deg,#00ff88,#00c2ff);width:100%;"></div></div><div style="text-align:right;color:#00ff88;font-size:12px;margin-top:4px;">✅ 绘制完成！</div>', unsafe_allow_html=True)
                     deduct_balance(active_user_key, MODEL_COSTS.get(model_used, 600))
-                    
                     task_update = {"task_id": task_id, "status": "succeeded", "urls": [urls[0]], "is_deducted": True}
                     if src_urls: task_update["src_urls"] = src_urls 
                     sync_task_to_db(task_update, active_user_key)
@@ -251,7 +251,6 @@ def auto_poll_task(task_id, active_user_key, model_used, start_time, src_urls=No
                     sync_task_to_db({"task_id": task_id, "status": "failed"}, active_user_key)
                     st.rerun(); return
         except Exception as e: pass
-        # 提速：检测间隔从 3s 降低到 2s，第一时间抓回结果
         time.sleep(2)
 
 # ==========================================
@@ -306,7 +305,6 @@ with col_main:
         if uploaded_files:
             p_cols = st.columns(6) 
             for i, file in enumerate(uploaded_files):
-                # 调用超高速缓存引擎！打字再也不卡了！
                 data_uri = process_cached_data_uri(file.getvalue())
                 uploaded_b64_urls.append(data_uri) 
                 zoom_id = f"zm_up_{i}" 
@@ -314,7 +312,7 @@ with col_main:
                     html_str = (
                         f'<label for="{zoom_id}"><img src="{data_uri}" class="result-thumb" style="width:100%; border-radius:8px; cursor:zoom-in;"><div style="text-align:center; font-size:11px; color:#aaa; margin-top:2px;">图 {i+1} (点击放大)</div></label>'
                         f'<input type="checkbox" id="{zoom_id}" class="modal-checkbox">'
-                        f'<div class="img-modal-overlay"><label for="{zoom_id}" class="modal-close-bg"></label><div class="single-img-container"><img src="{data_uri}" onmousemove="this.style.transformOrigin=(event.offsetX/this.offsetWidth)*100+\'% \'+(event.offsetY/this.offsetHeight)*100+\'%\';this.style.transform=\'scale(2.5)\'" onmouseout="this.style.transform=\'scale(1)\'" style="transition:transform 0.1s;cursor:crosshair;"></div></div>'
+                        f'<div class="img-modal-overlay"><label for="{zoom_id}" class="modal-close-bg"></label><div class="single-view"><img src="{data_uri}" onmousemove="this.style.transformOrigin=(event.offsetX/this.offsetWidth)*100+\'% \'+(event.offsetY/this.offsetHeight)*100+\'%\';this.style.transform=\'scale(2.5)\'" onmouseout="this.style.transform=\'scale(1)\'" style="transition:transform 0.1s;cursor:crosshair;"></div></div>'
                     )
                     st.markdown(html_str, unsafe_allow_html=True)
         
@@ -412,25 +410,42 @@ with col_history:
                     for i, url in enumerate(urls):
                         modal_id = f"cb_{str(item['task_id']).replace('-','')}_{i}"
                         
+                        # 🌟 动态呼出对比引擎！单图放大 -> 呼出对比
                         if src_urls and i < len(src_urls):
                             before_url = src_urls[i]
                             after_url = url
+                            
                             html_str = (
                                 f'<div class="modal-wrapper" style="position:relative;">'
                                 f'<label for="{modal_id}" style="cursor:zoom-in;display:block;">'
                                 f'<img src="{after_url}" class="result-thumb" style="width:100%;border-radius:8px;box-shadow:0 2px 6px rgba(0,0,0,0.1);transition:transform 0.2s;" onmouseover="this.style.transform=\'scale(1.02)\'" onmouseout="this.style.transform=\'scale(1)\'">'
-                                f'<div style="text-align:center;font-size:11px;color:#aaa;margin-top:4px;">图 {i+1} (点击对比)</div>'
                                 f'</label>'
                                 f'<input type="checkbox" id="{modal_id}" class="modal-checkbox">'
                                 f'<div class="img-modal-overlay">'
-                                f'<label for="{modal_id}" class="modal-close-bg"></label>'
-                                f'<div class="compare-wrapper">'
-                                f'<div class="compare-header"><span style="color:#fff;font-size:16px;font-weight:bold;">🪟 图像优化对比 (鼠标悬停放大)</span><label for="{modal_id}" class="close-btn">&times;</label></div>'
-                                f'<div class="view-side">'
-                                f'<div class="side-panel"><img src="{before_url}" onmousemove="this.style.transformOrigin=(event.offsetX/this.offsetWidth)*100+\'% \'+(event.offsetY/this.offsetHeight)*100+\'%\';this.style.transform=\'scale(2.5)\'" onmouseout="this.style.transform=\'scale(1)\'" style="cursor:crosshair;"><div class="side-label">原图 (Before)</div></div>'
-                                f'<div class="side-panel"><img src="{after_url}" onmousemove="this.style.transformOrigin=(event.offsetX/this.offsetWidth)*100+\'% \'+(event.offsetY/this.offsetHeight)*100+\'%\';this.style.transform=\'scale(2.5)\'" onmouseout="this.style.transform=\'scale(1)\'" style="cursor:crosshair;"><div class="side-label">成品 (After)</div></div>'
-                                f'</div>'
-                                f'</div>'
+                                    f'<label for="{modal_id}" class="modal-close-bg"></label>'
+                                    
+                                    f''
+                                    f'<input type="checkbox" id="compare_{modal_id}" class="compare-radio">'
+                                    
+                                    f''
+                                    f'<div class="single-view">'
+                                        f'<img src="{after_url}" onmousemove="this.style.transformOrigin=(event.offsetX/this.offsetWidth)*100+\'% \'+(event.offsetY/this.offsetHeight)*100+\'%\';this.style.transform=\'scale(2.5)\'" onmouseout="this.style.transform=\'scale(1)\'" style="transition:transform 0.1s;cursor:crosshair;">'
+                                        f'<label for="compare_{modal_id}" class="toggle-compare-btn">✨ 对比原图</label>'
+                                    f'</div>'
+                                    
+                                    f''
+                                    f'<div class="compare-view">'
+                                        f'<div class="compare-header">'
+                                            f'<div><label for="compare_{modal_id}" class="back-btn">⬅️ 返回单图</label></div>'
+                                            f'<span style="color:#fff;font-size:16px;font-weight:bold;">🪟 图像优化对比 (鼠标悬停放大)</span>'
+                                            f'<label for="{modal_id}" class="close-btn">&times;</label>'
+                                        f'</div>'
+                                        f'<div class="view-side">'
+                                            f'<div class="side-panel"><img src="{before_url}" onmousemove="this.style.transformOrigin=(event.offsetX/this.offsetWidth)*100+\'% \'+(event.offsetY/this.offsetHeight)*100+\'%\';this.style.transform=\'scale(2.5)\'" onmouseout="this.style.transform=\'scale(1)\'" style="cursor:crosshair;"><div class="side-label">原图 (Before)</div></div>'
+                                            f'<div class="side-panel"><img src="{after_url}" onmousemove="this.style.transformOrigin=(event.offsetX/this.offsetWidth)*100+\'% \'+(event.offsetY/this.offsetHeight)*100+\'%\';this.style.transform=\'scale(2.5)\'" onmouseout="this.style.transform=\'scale(1)\'" style="cursor:crosshair;"><div class="side-label">成品 (After)</div></div>'
+                                        f'</div>'
+                                    f'</div>'
+                                    
                                 f'</div>'
                                 f'</div>'
                             )
@@ -444,7 +459,7 @@ with col_history:
                                 f'<input type="checkbox" id="{modal_id}" class="modal-checkbox">'
                                 f'<div class="img-modal-overlay">'
                                 f'<label for="{modal_id}" class="modal-close-bg"></label>'
-                                f'<div class="single-img-container"><img src="{url}" onmousemove="this.style.transformOrigin=(event.offsetX/this.offsetWidth)*100+\'% \'+(event.offsetY/this.offsetHeight)*100+\'%\';this.style.transform=\'scale(2.5)\'" onmouseout="this.style.transform=\'scale(1)\'" style="transition:transform 0.1s;cursor:crosshair;"></div>'
+                                f'<div class="single-view"><img src="{url}" onmousemove="this.style.transformOrigin=(event.offsetX/this.offsetWidth)*100+\'% \'+(event.offsetY/this.offsetHeight)*100+\'%\';this.style.transform=\'scale(2.5)\'" onmouseout="this.style.transform=\'scale(1)\'" style="transition:transform 0.1s;cursor:crosshair;"></div>'
                                 f'</div>'
                                 f'</div>'
                             )
