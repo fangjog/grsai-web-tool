@@ -14,7 +14,7 @@ from supabase import create_client, Client
 # ==========================================
 # 0. 网页基础配置
 # ==========================================
-st.set_page_config(page_title="image-2 Studio V6.5", page_icon="🚀", layout="wide", initial_sidebar_state="auto")
+st.set_page_config(page_title="AI Pro Studio V6.5", page_icon="🚀", layout="wide", initial_sidebar_state="auto")
 
 st.markdown("""
 <style>
@@ -27,6 +27,16 @@ st.markdown("""
     .stButton > button { border-radius: 8px; font-weight: bold; transition: all 0.3s; }
     .stButton > button:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
     [data-testid="stHorizontalBlock"] > div { min-width: 80px !important; }
+    
+    /* 🌟 核心：让所有原生图片都拥有高级悬浮特效，同时保留其原生的点击放大功能 🌟 */
+    [data-testid="stImage"] img {
+        border-radius: 8px !important;
+        transition: transform 0.2s ease-in-out !important;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.1) !important;
+    }
+    [data-testid="stImage"]:hover img {
+        transform: scale(1.02) !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -41,7 +51,7 @@ except Exception as e:
     st.error("❌ 数据库连接失败，请检查 Secrets 配置。")
     st.stop()
 
-# 🌟 新增：动态模型定价表
+# 动态模型定价表
 MODEL_COSTS = {
     "gpt-image-2": 600,
     "gpt-image-2-vip": 900
@@ -86,7 +96,7 @@ if not card_info:
     st.markdown("<br><br><br>", unsafe_allow_html=True) 
     col1, col2, col3 = st.columns([1, 2, 1]) 
     with col2:
-        st.markdown("<div style='text-align: center;'><h1>🚀 image-2 Studio</h1><p>输入激活码解锁创作台</p></div>", unsafe_allow_html=True)
+        st.markdown("<div style='text-align: center;'><h1>🚀 AI Pro Studio</h1><p>输入激活码解锁创作台</p></div>", unsafe_allow_html=True)
         user_key_input = st.text_input("激活码", type="password", placeholder="🔑 在此输入激活码...", label_visibility="collapsed")
         if st.button("立即解锁进入系统 ✨", type="primary", use_container_width=True):
             user_key = user_key_input.strip()
@@ -132,18 +142,18 @@ def pil_to_data_uri(img):
     return f"data:image/jpeg;base64,{base64.b64encode(buffered.getvalue()).decode()}"
 
 # ==========================================
-# 自动轮询与炫酷动态充电条 (已修复 Markdown 缩进 Bug)
+# 自动轮询与炫酷动态充电条
 # ==========================================
-def auto_poll_task(task_id, active_user_key, model_used):
+def auto_poll_task(task_id, active_user_key, model_used, start_time):
     placeholder = st.empty()
     headers = {"Authorization": f"Bearer {GRSAI_API_KEY}", "Content-Type": "application/json"}
     query_url = "https://grsai.dakka.com.cn/v1/draw/result"
     cost_per_img = MODEL_COSTS.get(model_used, 600)
     
     for i in range(40):
-        p = min(5 + i*2, 95)
+        elapsed_time = time.time() - start_time
+        p = min(5 + int(elapsed_time), 95) 
         
-        # 🌟 修复关键：取消所有换行缩进，写成紧凑的一行，彻底杜绝被识别为代码块
         html_bar = f"""<div style="background-color: #1a1a1a; border-radius: 10px; padding: 4px; box-shadow: inset 0 1px 3px rgba(0,0,0,0.5); border: 1px solid #333;"><div style="height: 14px; border-radius: 6px; background: linear-gradient(90deg, #00c2ff, #00ffd5); width: {p}%; transition: width 0.5s ease-in-out; box-shadow: 0 0 10px #00ffd5;"></div></div><div style="text-align: right; color: #00ffd5; font-size: 13px; font-weight: bold; margin-top: 6px; font-family: monospace;">⚡ 云端算力注入中... {p}%</div>"""
         
         placeholder.markdown(html_bar, unsafe_allow_html=True)
@@ -153,23 +163,28 @@ def auto_poll_task(task_id, active_user_key, model_used):
             if q_res.get("code") == 0:
                 status = q_res["data"]["status"]
                 if status == "succeeded":
-                    # 瞬间充满的动画
-                    full_bar = f"""<div style="background-color: #1a1a1a; border-radius: 10px; padding: 4px; border: 1px solid #333;"><div style="height: 14px; border-radius: 6px; background: linear-gradient(90deg, #00ff88, #00c2ff); width: 100%; box-shadow: 0 0 10px #00ff88;"></div></div><div style="text-align: right; color: #00ff88; font-size: 13px; font-weight: bold; margin-top: 6px; font-family: monospace;">✅ 绘制完成！</div>"""
+                    results = q_res["data"]["results"]
+                    urls = [img["url"] for img in results]
+                    
+                    imgs_html = "".join([f'<img src="{url}" style="width:100%; border-radius:8px; margin-top:12px; border: 2px solid #00ff88; box-shadow: 0 0 20px rgba(0,255,136,0.2);">' for url in urls])
+                    full_bar = f"""<div style="background-color: #1a1a1a; border-radius: 10px; padding: 4px; border: 1px solid #333;"><div style="height: 14px; border-radius: 6px; background: linear-gradient(90deg, #00ff88, #00c2ff); width: 100%; box-shadow: 0 0 10px #00ff88;"></div></div><div style="text-align: right; color: #00ff88; font-size: 13px; font-weight: bold; margin-top: 6px; font-family: monospace;">✅ 绘制完成！</div>{imgs_html}"""
+                    
                     placeholder.markdown(full_bar, unsafe_allow_html=True)
                     
-                    results = q_res["data"]["results"]
                     num_images = len(results)
                     total_cost = num_images * cost_per_img
                     deduct_balance(active_user_key, total_cost)
                     
-                    urls = [img["url"] for img in results]
                     for t in st.session_state.tasks:
                         if t['task_id'] == task_id:
                             t['status'] = 'succeeded'
                             t['urls'] = urls
                     clean_and_get_tasks(active_user_key)
-                    time.sleep(1)
+                    
+                    time.sleep(1.5)
                     st.rerun()
+                    return 
+                    
                 elif status == "failed":
                     raw_reason = q_res["data"].get("failure_reason", "")
                     raw_error = q_res["data"].get("error", "")
@@ -178,7 +193,6 @@ def auto_poll_task(task_id, active_user_key, model_used):
                     error_dict = {
                         "The current model has a high load, please use another model": "当前模型并发拥挤，请稍后再试，或切换至 VIP 模型",
                         "We are sorry, but the images we created may have violated our relevant policies. If you think we made a mistake, please try again or edit your prompt.": "❌ 触发安全审查：生成的内容疑似包含违禁元素",
-                        "We’re so sorry, but the image we created may violate our content policies. If you think we got it wrong, please retry or edit your prompt.": "❌ 非常抱歉，我们生成的图片可能违反了我们的内容规定。如果您认为我们处理有误，请重新尝试或修改您的指令",
                         "error": "云端生成异常或触发安全审查，请调整提示词"
                     }
                     cn_error = error_dict.get(actual_err, f"系统异常: {actual_err}")
@@ -202,7 +216,6 @@ def auto_poll_task(task_id, active_user_key, model_used):
 # ==========================================
 # 4. 主界面
 # ==========================================
-# 🌟 侧边栏展示升级：显示积分 + 预估张数
 st.sidebar.markdown(f'### 👤 用户中心\n当前用户: `{user_key}`')
 st.sidebar.markdown(f'剩余积分: <span style="color:#00c2ff; font-weight:bold; font-size:24px;">{current_balance}</span>', unsafe_allow_html=True)
 st.sidebar.markdown(f'<div style="font-size:13px; color:#666;">标准模式约可制 <b style="color:#333;">{current_balance//600}</b> 张<br>VIP 模式约可制 <b style="color:#333;">{current_balance//900}</b> 张</div>', unsafe_allow_html=True)
@@ -215,7 +228,7 @@ if st.sidebar.button("🚪 退出登录", use_container_width=True):
 st.sidebar.divider()
 menu = st.sidebar.radio("功能导航", ["✍️ 文生图", "🖼️ 图生图"])
 
-st.title("🚀 image-2 文生图")
+st.title("🚀 AI Pro Studio")
 col_main, col_history = st.columns([7, 3])
 
 with col_main:
@@ -250,7 +263,6 @@ with col_main:
         btn_submit = st.button("🚀 开始垫图生成", type="primary", use_container_width=True)
 
     if btn_submit:
-        # 🌟 提交前校验：根据选择的模型查验余额
         required_points = MODEL_COSTS.get(selected_model, 600)
         if current_balance < required_points: 
             st.error(f"❌ 额度不足，当前模型需要 {required_points} 积分。")
@@ -274,12 +286,10 @@ with col_main:
 
             headers = {"Authorization": f"Bearer {GRSAI_API_KEY}", "Content-Type": "application/json"}
             
-            # 🌟 修复版：将网络请求与页面刷新彻底分离，防止误拦截
             sub_res = None
             try:
                 sub_res = requests.post("https://grsai.dakka.com.cn/v1/draw/completions", headers=headers, json=payload, verify=False).json()
             except Exception as e:
-                # 只有真正连不上网、发不起任务时，才会走到这里
                 st.error("📡 网络连接异常，无法发起任务，请检查网络或稍后重试。")
                 
             if sub_res:
@@ -287,7 +297,7 @@ with col_main:
                     add_task({"task_id": sub_res["data"]["id"], "timestamp": time.time(), "time_str": datetime.now().strftime("%H:%M"), "prompt": prompt_txt, "status": "running", "urls": [], "model": selected_model}, user_key)
                     st.success("🎉 任务已提交云端！")
                     time.sleep(0.5)
-                    st.rerun() # 现在它绝不会被当作网络异常拦截了！
+                    st.rerun() 
                 else: 
                     st.error(f"❌ 发起失败：{sub_res.get('msg')}")
 
@@ -298,7 +308,7 @@ with col_history:
     else:
         with st.container(height=700):
             for item in reversed(tasks_list):
-                model_used_badge = "👑 VIP" if item.get('model') == 'gpt-image-2-vip' else "gpt-image-2"
+                model_used_badge = "👑 VIP" if item.get('model') == 'gpt-image-2-vip' else "普"
                 prompt_text = item.get('prompt', '')
                 short_prompt = prompt_text[:10] + "..." if len(prompt_text) > 10 else prompt_text
                 
@@ -307,13 +317,14 @@ with col_history:
                 with st.expander("📋 展开复制完整提示词"):
                     st.code(prompt_text, language="text")
 
-                # 🌟 核心改动：不再需要点击按钮，只要状态是 running，立刻原地拉起炫酷充电条！
                 if item.get('status') == 'running':
-                    auto_poll_task(item['task_id'], user_key, item.get('model', 'gpt-image-2'))
+                    auto_poll_task(item['task_id'], user_key, item.get('model', 'gpt-image-2'), item['timestamp'])
                     
                 elif item.get('status') == 'succeeded':
                     for url in item.get('urls', []):
-                        st.markdown(f'<a href="{url}" target="_blank"><img src="{url}" style="width:100%; border-radius:8px; cursor:zoom-in; transition: transform 0.2s; box-shadow: 0 2px 6px rgba(0,0,0,0.1); margin-bottom:8px;" onmouseover="this.style.transform=\'scale(1.02)\'" onmouseout="this.style.transform=\'scale(1)\'"></a>', unsafe_allow_html=True)
+                        # 🌟 核心改动：换回原生 st.image，支持原页面内点击遮罩全屏放大！
+                        st.image(url, use_container_width=True)
+                        
                 elif item.get('status') == 'failed': 
                     fail_msg = item.get('reason', '触发安全审查或云端接口异常')
                     st.error(f"❌ 失败原因: {fail_msg}")
