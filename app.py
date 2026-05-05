@@ -16,7 +16,7 @@ import pytz
 # ==========================================
 # 0. 网页基础配置与全局 CSS
 # ==========================================
-st.set_page_config(page_title="AI Pro Studio V6.47", page_icon="🚀", layout="wide", initial_sidebar_state="auto")
+st.set_page_config(page_title="AI Pro Studio V6.48", page_icon="🚀", layout="wide", initial_sidebar_state="auto")
 
 st.markdown("""
 <style>
@@ -32,7 +32,8 @@ st.markdown("""
         box-shadow: 0 2px 6px rgba(0,0,0,0.1); margin-bottom: 8px;
         display: block; opacity: 1 !important;
     }
-    .result-thumb:hover { transform: scale(1.02); box-shadow: 0 6px 16px rgba(0,0,0,0.2); }
+    /* 电脑端才启用悬浮变大，防止手机端点击两次才生效 */
+    @media (hover: hover) { .result-thumb:hover { transform: scale(1.02); box-shadow: 0 6px 16px rgba(0,0,0,0.2); } }
     
     .img-modal-overlay {
         display: none; position: fixed; z-index: 999999; top: 0; left: 0; 
@@ -60,7 +61,7 @@ st.markdown("""
         border-radius: 8px; font-weight: bold; cursor: pointer;
         box-shadow: 0 4px 12px rgba(0,255,213,0.3); transition: 0.2s;
     }
-    .toggle-compare-btn:hover { background: #00ffd5; transform: translateY(-2px); }
+    @media (hover: hover) { .toggle-compare-btn:hover { background: #00ffd5; transform: translateY(-2px); } }
     
     .compare-radio { display: none; }
     .compare-view { display: none; }
@@ -81,121 +82,29 @@ st.markdown("""
         padding: 15px 20px; background: #2a2a2a; border-radius: 12px 12px 0 0; border-bottom: 1px solid #444;
     }
     
-    .back-btn {
-        background: #444; color: #fff; padding: 6px 16px; border-radius: 6px; cursor: pointer; transition: 0.2s;
-    }
-    .back-btn:hover { background: #555; }
+    .back-btn { background: #444; color: #fff; padding: 6px 16px; border-radius: 6px; cursor: pointer; transition: 0.2s; }
+    @media (hover: hover) { .back-btn:hover { background: #555; } }
     .close-btn { color: #aaa; font-size: 32px; cursor: pointer; font-weight: bold; line-height: 0.8; margin-left:10px;}
-    .close-btn:hover { color: #ff4b4b; }
+    @media (hover: hover) { .close-btn:hover { color: #ff4b4b; } }
     
-    .view-side { flex: 1; display: flex; gap: 2px; background: #111; border-radius: 0 0 12px 12px; overflow: hidden;}
+    .view-side { flex: 1; display: flex; gap: 2px; background: #111; border-radius: 0 0 12px 12px; overflow: hidden; flex-direction: row;}
     .side-panel { flex: 1; position: relative; background: #0b0b0b; display: flex; align-items: center; justify-content: center; overflow: hidden;}
     .side-panel img { width: 100%; height: 100%; object-fit: contain; cursor: zoom-in; }
     .side-label { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.8); color: #fff; padding: 8px 18px; border-radius: 20px; font-size: 15px; font-weight:bold; border: 1px solid #555; pointer-events: none;}
+
+    /* 📱 === 手机端完美自适应核心代码 === */
+    @media screen and (max-width: 768px) {
+        .compare-wrapper { width: 95vw !important; height: 90vh !important; }
+        .view-side { flex-direction: column !important; } /* 手机端强制改为上下对比 */
+        .compare-header { padding: 10px 12px !important; }
+        .compare-header span { font-size: 14px !important; }
+        .back-btn { font-size: 12px !important; padding: 4px 10px !important; }
+        .close-btn { font-size: 26px !important; }
+        .side-label { font-size: 12px !important; bottom: 10px !important; padding: 4px 12px !important; }
+        .toggle-compare-btn { left: 50% !important; bottom: 15px !important; transform: translateX(-50%) !important; width: auto !important; text-align: center; font-size: 14px !important; padding: 8px 24px !important; }
+    }
 </style>
 """, unsafe_allow_html=True)
-
-# 🚀 绝杀黑科技：向浏览器全局注入【滚轮放大】和【按住拖拽】的原生逻辑
-components.html("""
-<script>
-const parentDoc = window.parent.document;
-if (!parentDoc.getElementById('global-zoom-pan')) {
-    const marker = parentDoc.createElement('div');
-    marker.id = 'global-zoom-pan';
-    parentDoc.body.appendChild(marker);
-
-    let isDragging = false;
-    let startX, startY;
-    let activeImg = null;
-
-    // 监听滚轮缩放
-    parentDoc.addEventListener('wheel', function(e) {
-        const img = e.target;
-        if (img.tagName === 'IMG' && (img.closest('.side-panel') || img.closest('.single-view'))) {
-            e.preventDefault();
-            let scale = parseFloat(img.getAttribute('data-scale')) || 1;
-            let tx = parseFloat(img.getAttribute('data-tx')) || 0;
-            let ty = parseFloat(img.getAttribute('data-ty')) || 0;
-            
-            let delta = e.deltaY > 0 ? -0.3 : 0.3; // 缩放速度
-            if (scale === 1 && delta < 0) return; // 不能缩小到1以下
-            
-            if (scale === 1 && delta > 0) {
-                // 初次放大时，将变换中心对准鼠标位置
-                const rect = img.getBoundingClientRect();
-                const x = ((e.clientX - rect.left) / rect.width) * 100;
-                const y = ((e.clientY - rect.top) / rect.height) * 100;
-                img.style.transformOrigin = `${x}% ${y}%`;
-            }
-
-            scale += delta;
-            if (scale <= 1) { scale = 1; tx = 0; ty = 0; img.style.transformOrigin = `center center`; }
-            if (scale > 8) scale = 8; // 最大放大8倍
-
-            img.setAttribute('data-scale', scale);
-            img.setAttribute('data-tx', tx);
-            img.setAttribute('data-ty', ty);
-            
-            img.style.transition = 'transform 0.1s ease-out';
-            img.style.transform = `translate(${tx}px, ${ty}px) scale(${scale})`;
-            img.style.cursor = scale > 1 ? 'grab' : 'zoom-in';
-        }
-    }, {passive: false});
-
-    // 监听按住拖拽
-    parentDoc.addEventListener('mousedown', (e) => {
-        const img = e.target;
-        if (img.tagName === 'IMG' && (img.closest('.side-panel') || img.closest('.single-view'))) {
-            let scale = parseFloat(img.getAttribute('data-scale')) || 1;
-            if (scale > 1) {
-                isDragging = true;
-                activeImg = img;
-                startX = e.clientX - (parseFloat(img.getAttribute('data-tx')) || 0);
-                startY = e.clientY - (parseFloat(img.getAttribute('data-ty')) || 0);
-                img.style.transition = 'none'; // 拖拽时取消动画，防止迟滞
-                img.style.cursor = 'grabbing';
-                e.preventDefault();
-            }
-        }
-    });
-
-    parentDoc.addEventListener('mousemove', (e) => {
-        if (!isDragging || !activeImg) return;
-        let tx = e.clientX - startX;
-        let ty = e.clientY - startY;
-        let scale = parseFloat(activeImg.getAttribute('data-scale')) || 1;
-        
-        activeImg.setAttribute('data-tx', tx);
-        activeImg.setAttribute('data-ty', ty);
-        activeImg.style.transform = `translate(${tx}px, ${ty}px) scale(${scale})`;
-    });
-
-    const stopDrag = () => {
-        if (isDragging && activeImg) {
-            isDragging = false;
-            activeImg.style.cursor = 'grab';
-            activeImg.style.transition = 'transform 0.1s ease-out';
-            activeImg = null;
-        }
-    };
-    parentDoc.addEventListener('mouseup', stopDrag);
-    parentDoc.addEventListener('mouseleave', stopDrag);
-
-    // 关闭模态框时重置图片状态
-    parentDoc.addEventListener('click', function(e) {
-        if (e.target.classList.contains('modal-close-bg') || e.target.classList.contains('close-btn') || e.target.classList.contains('back-btn')) {
-            parentDoc.querySelectorAll('.side-panel img, .single-view img').forEach(img => {
-                img.setAttribute('data-scale', 1);
-                img.setAttribute('data-tx', 0);
-                img.setAttribute('data-ty', 0);
-                img.style.transform = 'translate(0px, 0px) scale(1)';
-                img.style.cursor = 'zoom-in';
-            });
-        }
-    });
-}
-</script>
-""", height=0, width=0)
 
 # ==========================================
 # 1. 常量、数据库与缓存加速引擎
@@ -316,20 +225,16 @@ clean_api_name = (card_info.get('api_secret_name') or "API_VIP888").strip("'").s
 GRSAI_API_KEY = st.secrets.get(clean_api_name, "")
 
 # ==========================================
-# 3. 自动轮询 (究极耐心抗压版)
+# 3. 自动轮询
 # ==========================================
 def auto_poll_task(task_id, active_user_key, model_used, start_time, src_urls=None):
     placeholder = st.empty()
     headers = {"Authorization": f"Bearer {GRSAI_API_KEY}", "Content-Type": "application/json"}
     query_url = "https://grsai.dakka.com.cn/v1/draw/result"
     
-    # 🌟 修复：将前端轮询次数从 90 次提升至 300 次，每次间隔 3 秒，总共可等待长达 15 分钟！
-    for i in range(300):
-        # 🌟 进度条计算公式调慢，0.2 的系数意味着需要 465 秒才会涨到 98%，避免早早定格
-        p = min(5 + int((time.time() - start_time) * 0.2), 98) 
-        
-        # 提示词增加安抚信息
-        placeholder.markdown(f'<div style="background:#111;border-radius:10px;padding:4px;border:1px solid #333;"><div style="height:12px;border-radius:6px;background:linear-gradient(90deg,#00c2ff,#00ffd5);width:{p}%;"></div></div><div style="text-align:right;color:#00ffd5;font-size:12px;margin-top:4px;">⚡ 正在排队/生成中... {p}% (耗时较长请耐心等待)</div>', unsafe_allow_html=True)
+    for i in range(90):
+        p = min(5 + int((time.time() - start_time) * 1.5), 98) 
+        placeholder.markdown(f'<div style="background:#111;border-radius:10px;padding:4px;border:1px solid #333;"><div style="height:12px;border-radius:6px;background:linear-gradient(90deg,#00c2ff,#00ffd5);width:{p}%;"></div></div><div style="text-align:right;color:#00ffd5;font-size:12px;margin-top:4px;">⚡ 生成中... {p}%</div>', unsafe_allow_html=True)
         try:
             resp = requests.post(query_url, headers=headers, json={"id": task_id}, verify=False, timeout=10)
             q_res = parse_api_response(resp.text) 
@@ -353,9 +258,7 @@ def auto_poll_task(task_id, active_user_key, model_used, start_time, src_urls=No
                     sync_task_to_db({"task_id": task_id, "status": "failed"}, active_user_key)
                     st.rerun(); return
         except Exception as e: pass
-        
-        # 每次等待 3 秒，既不给服务器太大压力，也能撑够 15 分钟
-        time.sleep(3)
+        time.sleep(2)
 
 # ==========================================
 # 4. 主界面
@@ -415,7 +318,7 @@ with col_main:
                 with p_cols[i % 6]:
                     html_str = (
                         f'<div class="modal-wrapper" style="position:relative;">'
-                        f'<label for="{zoom_id}"><img src="{data_uri}" class="result-thumb" style="width:100%; border-radius:8px; cursor:zoom-in;"><div style="text-align:center; font-size:11px; color:#aaa; margin-top:2px;">图 {i+1} (点击放大)</div></label>'
+                        f'<label for="{zoom_id}"><img src="{data_uri}" class="result-thumb" style="width:100%; border-radius:8px;"><div style="text-align:center; font-size:11px; color:#aaa; margin-top:2px;">图 {i+1} (点击放大)</div></label>'
                         f'<input type="checkbox" id="{zoom_id}" class="modal-checkbox">'
                         f'<div class="img-modal-overlay"><label for="{zoom_id}" class="modal-close-bg"></label><div class="single-view"><img src="{data_uri}"></div></div>'
                         f'</div>'
@@ -536,7 +439,7 @@ with col_history:
                                     f'<div class="compare-view">'
                                         f'<div class="compare-header">'
                                             f'<div><label for="compare_{modal_id}" class="back-btn">⬅️ 返回</label></div>'
-                                            f'<span style="color:#fff;font-size:16px;font-weight:bold;">🪟 图像优化对比 (滚轮放大，鼠标拖拽)</span>'
+                                            f'<span style="color:#fff;font-size:16px;font-weight:bold;">🪟 图像优化对比 (电脑滚轮放大)</span>'
                                             f'<label for="{modal_id}" class="close-btn">&times;</label>'
                                         f'</div>'
                                         f'<div class="view-side">'
@@ -565,3 +468,105 @@ with col_history:
                             
                 elif item['status'] == 'failed': st.error(f"❌ 失败/未通过审查")
                 st.divider()
+
+# ==========================================
+# 5. 全局注入：电脑端滚轮防拦截放大脚本 (移动至最底部防覆盖)
+# ==========================================
+components.html("""
+<script>
+const parentDoc = window.parent.document;
+if (!parentDoc.getElementById('global-zoom-pan')) {
+    const marker = parentDoc.createElement('div');
+    marker.id = 'global-zoom-pan';
+    parentDoc.body.appendChild(marker);
+
+    let isDragging = false;
+    let startX, startY;
+    let activeImg = null;
+
+    parentDoc.addEventListener('wheel', function(e) {
+        if (window.innerWidth <= 768) return; // 手机端交由系统原生双指缩放，不予拦截
+        const img = e.target;
+        if (img.tagName === 'IMG' && (img.closest('.side-panel') || img.closest('.single-view'))) {
+            e.preventDefault();
+            let scale = parseFloat(img.getAttribute('data-scale')) || 1;
+            let tx = parseFloat(img.getAttribute('data-tx')) || 0;
+            let ty = parseFloat(img.getAttribute('data-ty')) || 0;
+            
+            let delta = e.deltaY > 0 ? -0.3 : 0.3; 
+            if (scale === 1 && delta < 0) return; 
+            
+            if (scale === 1 && delta > 0) {
+                const rect = img.getBoundingClientRect();
+                const x = ((e.clientX - rect.left) / rect.width) * 100;
+                const y = ((e.clientY - rect.top) / rect.height) * 100;
+                img.style.transformOrigin = `${x}% ${y}%`;
+            }
+
+            scale += delta;
+            if (scale <= 1) { scale = 1; tx = 0; ty = 0; img.style.transformOrigin = `center center`; }
+            if (scale > 8) scale = 8; 
+
+            img.setAttribute('data-scale', scale);
+            img.setAttribute('data-tx', tx);
+            img.setAttribute('data-ty', ty);
+            
+            img.style.transition = 'transform 0.1s ease-out';
+            img.style.transform = `translate(${tx}px, ${ty}px) scale(${scale})`;
+            img.style.cursor = scale > 1 ? 'grab' : 'zoom-in';
+        }
+    }, {passive: false});
+
+    parentDoc.addEventListener('mousedown', (e) => {
+        if (window.innerWidth <= 768) return; // 手机端不处理鼠标拖拽
+        const img = e.target;
+        if (img.tagName === 'IMG' && (img.closest('.side-panel') || img.closest('.single-view'))) {
+            let scale = parseFloat(img.getAttribute('data-scale')) || 1;
+            if (scale > 1) {
+                isDragging = true;
+                activeImg = img;
+                startX = e.clientX - (parseFloat(img.getAttribute('data-tx')) || 0);
+                startY = e.clientY - (parseFloat(img.getAttribute('data-ty')) || 0);
+                img.style.transition = 'none'; 
+                img.style.cursor = 'grabbing';
+                e.preventDefault();
+            }
+        }
+    });
+
+    parentDoc.addEventListener('mousemove', (e) => {
+        if (!isDragging || !activeImg) return;
+        let tx = e.clientX - startX;
+        let ty = e.clientY - startY;
+        let scale = parseFloat(activeImg.getAttribute('data-scale')) || 1;
+        
+        activeImg.setAttribute('data-tx', tx);
+        activeImg.setAttribute('data-ty', ty);
+        activeImg.style.transform = `translate(${tx}px, ${ty}px) scale(${scale})`;
+    });
+
+    const stopDrag = () => {
+        if (isDragging && activeImg) {
+            isDragging = false;
+            activeImg.style.cursor = 'grab';
+            activeImg.style.transition = 'transform 0.1s ease-out';
+            activeImg = null;
+        }
+    };
+    parentDoc.addEventListener('mouseup', stopDrag);
+    parentDoc.addEventListener('mouseleave', stopDrag);
+
+    parentDoc.addEventListener('click', function(e) {
+        if (e.target.classList.contains('modal-close-bg') || e.target.classList.contains('close-btn') || e.target.classList.contains('back-btn')) {
+            parentDoc.querySelectorAll('.side-panel img, .single-view img').forEach(img => {
+                img.setAttribute('data-scale', 1);
+                img.setAttribute('data-tx', 0);
+                img.setAttribute('data-ty', 0);
+                img.style.transform = 'translate(0px, 0px) scale(1)';
+                img.style.cursor = 'zoom-in';
+            });
+        }
+    });
+}
+</script>
+""", height=0, width=0, style="position: absolute; pointer-events: none;")
