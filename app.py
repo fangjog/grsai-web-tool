@@ -1,6 +1,5 @@
 # 文件名: app.py
 import streamlit as st
-import streamlit.components.v1 as components
 import requests
 import time
 from PIL import Image
@@ -12,11 +11,15 @@ import os
 from streamlit_drawable_canvas import st_canvas
 from supabase import create_client, Client
 import pytz 
+import urllib3
+
+# 🌟 绝杀烦人的日志警告：屏蔽底层的 HTTPS 证书未验证警告
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # ==========================================
 # 0. 网页基础配置与全局 CSS
 # ==========================================
-st.set_page_config(page_title="AI Pro Studio V6.49", page_icon="🚀", layout="wide", initial_sidebar_state="auto")
+st.set_page_config(page_title="AI Pro Studio V6.50", page_icon="🚀", layout="wide", initial_sidebar_state="auto")
 
 st.markdown("""
 <style>
@@ -469,9 +472,9 @@ with col_history:
                 st.divider()
 
 # ==========================================
-# 5. 全局注入：防屏蔽版
+# 5. 全局注入：防屏蔽版 (替换为最新的 st.html 规范写法)
 # ==========================================
-components.html("""
+st.html("""
 <script>
 const parentDoc = window.parent.document;
 if (!parentDoc.getElementById('global-zoom-pan')) {
@@ -484,7 +487,7 @@ if (!parentDoc.getElementById('global-zoom-pan')) {
     let activeImg = null;
 
     parentDoc.addEventListener('wheel', function(e) {
-        if (window.innerWidth <= 768) return; // 手机端交由系统原生双指缩放，不予拦截
+        if (window.innerWidth <= 768) return; 
         const img = e.target;
         if (img.tagName === 'IMG' && (img.closest('.side-panel') || img.closest('.single-view'))) {
             e.preventDefault();
@@ -568,4 +571,4 @@ if (!parentDoc.getElementById('global-zoom-pan')) {
     });
 }
 </script>
-""", height=0, width=0)
+""")
