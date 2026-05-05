@@ -15,7 +15,7 @@ import pytz
 import urllib3
 import warnings
 
-# 🌟 绝杀烦人的日志警告：彻底屏蔽 HTTPS 警告和 Streamlit 的旧版组件弃用警告
+# 🌟 绝杀烦人的日志警告
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 warnings.filterwarnings("ignore", message=".*st.components.v1.html.*")
@@ -23,7 +23,7 @@ warnings.filterwarnings("ignore", message=".*st.components.v1.html.*")
 # ==========================================
 # 0. 网页基础配置与全局 CSS
 # ==========================================
-st.set_page_config(page_title="AI Pro Studio V6.55", page_icon="🚀", layout="wide", initial_sidebar_state="auto")
+st.set_page_config(page_title="AI Pro Studio V6.56", page_icon="🚀", layout="wide", initial_sidebar_state="auto")
 
 st.markdown("""
 <style>
@@ -39,8 +39,9 @@ st.markdown("""
     .my-overlay { display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.92); z-index: 999999; align-items: center; justify-content: center; overflow: hidden; }
     .my-cb:checked ~ .my-overlay { display: flex !important; }
     .my-bg { position: absolute; top:0; left:0; width:100%; height:100%; cursor: zoom-out; z-index: 1; }
-    /* 单图缩放核心属性 */
-    .my-modal-img { position: relative; z-index: 10; max-width: 90vw; max-height: 90vh; border-radius: 8px; box-shadow: 0 0 50px rgba(0,0,0,0.8); object-fit: contain; transform-origin: 0 0; will-change: transform; cursor: grab; }
+    
+    /* 单图初始状态：显示放大镜 */
+    .my-modal-img { position: relative; z-index: 10; max-width: 90vw; max-height: 90vh; border-radius: 8px; box-shadow: 0 0 50px rgba(0,0,0,0.8); object-fit: contain; transform-origin: 0 0; will-change: transform; cursor: zoom-in; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -136,7 +137,7 @@ def parse_api_response(text):
     return None
 
 # ==========================================
-# 2. 高级同步对比台 (仅在图生图点击对比按钮时呼出)
+# 2. 高级同步对比台
 # ==========================================
 @st.dialog("🔍 高级同步对比台", width="large")
 def show_viewer_dialog(before_url, after_url):
@@ -381,6 +382,7 @@ with col_main:
                         f'<input type="checkbox" id="{zoom_id}" class="my-cb">'
                         f'<div class="my-overlay">'
                         f'<label for="{zoom_id}" class="my-bg"></label>'
+                        f'<div style="position:absolute; top:20px; color:#fff; background:rgba(0,0,0,0.6); padding:6px 16px; border-radius:20px; font-size:13px; pointer-events:none; z-index:20;">💡 点击图片 或 滚动滚轮 均可缩放，按住拖拽</div>'
                         f'<img src="{data_uri}" class="my-modal-img" draggable="false">'
                         f'</div>'
                         f'</div>'
@@ -481,16 +483,16 @@ with col_history:
                     for i, url in enumerate(urls):
                         modal_id = f"cb_{str(item['task_id']).replace('-','')}_{i}"
                         
-                        # 单图瞬间放大，并自带精准缩放拖拽功能
                         html_str = (
                             f'<div style="position:relative; margin-bottom:10px;">'
                             f'<label for="{modal_id}" style="display:block; cursor:zoom-in;">'
                             f'<img src="{url}" class="my-thumb">'
-                            f'<div style="text-align:center;font-size:11px;color:#aaa;margin-top:4px;">图 {i+1} (点击放大，滚轮缩放)</div>'
+                            f'<div style="text-align:center;font-size:11px;color:#aaa;margin-top:4px;">图 {i+1} (点击查看)</div>'
                             f'</label>'
                             f'<input type="checkbox" id="{modal_id}" class="my-cb">'
                             f'<div class="my-overlay">'
                             f'<label for="{modal_id}" class="my-bg"></label>'
+                            f'<div style="position:absolute; top:20px; color:#fff; background:rgba(0,0,0,0.6); padding:6px 16px; border-radius:20px; font-size:13px; pointer-events:none; z-index:20;">💡 点击图片 或 滚动滚轮 均可缩放，按住拖拽</div>'
                             f'<img src="{url}" class="my-modal-img" draggable="false">'
                             f'</div>'
                             f'</div>'
@@ -505,31 +507,43 @@ with col_history:
                 st.divider()
 
 # ==========================================
-# 6. 单图放大核心计算引擎 (屏蔽了错误日志)
+# 6. 单图双模放大计算引擎 (支持点击放大+滚轮)
 # ==========================================
 components.html("""
 <script>
     const parentDoc = window.parent.document;
-    if (!parentDoc.getElementById('global-single-zoom')) {
+    if (!parentDoc.getElementById('global-single-zoom-v2')) {
         const marker = parentDoc.createElement('div');
-        marker.id = 'global-single-zoom';
+        marker.id = 'global-single-zoom-v2';
         parentDoc.body.appendChild(marker);
 
         let isDragging = false;
+        let hasMoved = false; // 用于区分是“点击”还是“拖拽”
         let startX, startY;
         let activeImg = null;
 
+        // 统一控制图片的渲染状态
+        const updateImg = (img, scale, tx, ty, animate) => {
+            img.setAttribute('data-scale', scale);
+            img.setAttribute('data-tx', tx);
+            img.setAttribute('data-ty', ty);
+            img.style.transformOrigin = '0 0';
+            img.style.transition = animate ? 'transform 0.2s ease-out' : 'none';
+            img.style.transform = `translate(${tx}px, ${ty}px) scale(${scale})`;
+            // 当放大后，指针变成小手，提示可以拖拽
+            img.style.cursor = scale > 1 ? (isDragging ? 'grabbing' : 'grab') : 'zoom-in';
+        };
+
+        // 1. 拦截滚轮：无极缩放
         parentDoc.addEventListener('wheel', function(e) {
             if (window.innerWidth <= 768) return; 
             const img = e.target;
-            // 拦截所有纯净大图
             if (img.tagName === 'IMG' && img.classList.contains('my-modal-img')) {
                 e.preventDefault();
                 let scale = parseFloat(img.getAttribute('data-scale')) || 1;
                 let tx = parseFloat(img.getAttribute('data-tx')) || 0;
                 let ty = parseFloat(img.getAttribute('data-ty')) || 0;
                 
-                img.style.transition = 'none';
                 const rect = img.getBoundingClientRect();
                 const mouseX = e.clientX - rect.left;
                 const mouseY = e.clientY - rect.top;
@@ -538,67 +552,90 @@ components.html("""
 
                 const delta = e.deltaY > 0 ? 0.85 : 1.15; 
                 let newScale = scale * delta;
-                if (newScale < 0.2) newScale = 0.2;
-                if (newScale > 20) newScale = 20;
-
-                tx += xs * (scale - newScale);
-                ty += ys * (scale - newScale);
-
-                img.setAttribute('data-scale', newScale);
-                img.setAttribute('data-tx', tx);
-                img.setAttribute('data-ty', ty);
                 
-                img.style.transformOrigin = `0 0`;
-                img.style.transform = `translate(${tx}px, ${ty}px) scale(${newScale})`;
+                if (newScale <= 1) { newScale = 1; tx = 0; ty = 0; }
+                else if (newScale > 20) newScale = 20;
+                else {
+                    tx += xs * (scale - newScale);
+                    ty += ys * (scale - newScale);
+                }
+                updateImg(img, newScale, tx, ty, false); // 滚轮不加动画，保证跟手
             }
         }, {passive: false});
 
+        // 2. 拦截鼠标按下：记录坐标
         parentDoc.addEventListener('mousedown', (e) => {
             if (window.innerWidth <= 768) return; 
             const img = e.target;
             if (img.tagName === 'IMG' && img.classList.contains('my-modal-img')) {
+                e.preventDefault();
                 let scale = parseFloat(img.getAttribute('data-scale')) || 1;
+                isDragging = true;
+                hasMoved = false; // 按下时重置移动标记
+                activeImg = img;
+                startX = e.clientX - (parseFloat(img.getAttribute('data-tx')) || 0);
+                startY = e.clientY - (parseFloat(img.getAttribute('data-ty')) || 0);
+                
                 if (scale > 1) {
-                    isDragging = true;
-                    activeImg = img;
-                    startX = e.clientX - (parseFloat(img.getAttribute('data-tx')) || 0);
-                    startY = e.clientY - (parseFloat(img.getAttribute('data-ty')) || 0);
-                    img.style.transition = 'none'; 
                     img.style.cursor = 'grabbing';
-                    e.preventDefault();
+                    img.style.transition = 'none';
                 }
             }
         });
 
+        // 3. 拦截鼠标移动：执行拖拽
         parentDoc.addEventListener('mousemove', (e) => {
             if (!isDragging || !activeImg) return;
-            let tx = e.clientX - startX;
-            let ty = e.clientY - startY;
+            hasMoved = true; // 只要移动了，就标记为拖拽，不再触发“点击放大”
             let scale = parseFloat(activeImg.getAttribute('data-scale')) || 1;
-            
-            activeImg.setAttribute('data-tx', tx);
-            activeImg.setAttribute('data-ty', ty);
-            activeImg.style.transform = `translate(${tx}px, ${ty}px) scale(${scale})`;
+            if (scale > 1) {
+                let tx = e.clientX - startX;
+                let ty = e.clientY - startY;
+                updateImg(activeImg, scale, tx, ty, false);
+            }
         });
 
-        const stopDrag = () => {
+        // 4. 拦截鼠标松开：执行【点击放大】或【结束拖拽】
+        const stopDrag = (e) => {
             if (isDragging && activeImg) {
                 isDragging = false;
-                activeImg.style.cursor = 'grab';
+                let img = activeImg;
                 activeImg = null;
+                
+                // 如果鼠标按下后没有移动，说明这是一次纯粹的“点击”
+                if (!hasMoved) {
+                    let scale = parseFloat(img.getAttribute('data-scale')) || 1;
+                    if (scale === 1) {
+                        // 动作：点击放大 (2.5倍)
+                        let newScale = 2.5;
+                        const rect = img.getBoundingClientRect();
+                        const mouseX = e.clientX - rect.left;
+                        const mouseY = e.clientY - rect.top;
+                        
+                        let tx = mouseX - mouseX * newScale;
+                        let ty = mouseY - mouseY * newScale;
+                        
+                        updateImg(img, newScale, tx, ty, true); // 点击带动画，体验更好
+                    } else {
+                        // 动作：再次点击缩小复原
+                        updateImg(img, 1, 0, 0, true);
+                    }
+                } else {
+                    // 这是拖拽结束，仅恢复鼠标样式
+                    let scale = parseFloat(img.getAttribute('data-scale')) || 1;
+                    img.style.cursor = scale > 1 ? 'grab' : 'zoom-in';
+                }
             }
         };
+
         parentDoc.addEventListener('mouseup', stopDrag);
         parentDoc.addEventListener('mouseleave', stopDrag);
 
-        // 点击黑边关闭时重置坐标，避免下次打开乱跑
+        // 5. 点击黑边关闭时，重置所有图片坐标
         parentDoc.addEventListener('click', function(e) {
             if (e.target.classList.contains('my-bg')) {
                 parentDoc.querySelectorAll('.my-modal-img').forEach(img => {
-                    img.setAttribute('data-scale', 1);
-                    img.setAttribute('data-tx', 0);
-                    img.setAttribute('data-ty', 0);
-                    img.style.transform = 'translate(0px, 0px) scale(1)';
+                    updateImg(img, 1, 0, 0, false);
                 });
             }
         });
