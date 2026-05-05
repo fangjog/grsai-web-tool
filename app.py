@@ -20,15 +20,23 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 # ==========================================
 # 0. 网页基础配置与全局 CSS
 # ==========================================
-st.set_page_config(page_title="AI Pro Studio V6.53", page_icon="🚀", layout="wide", initial_sidebar_state="auto")
+st.set_page_config(page_title="AI Pro Studio V6.54", page_icon="🚀", layout="wide", initial_sidebar_state="auto")
 
 st.markdown("""
 <style>
     [data-testid="stVerticalBlock"] { overflow-x: hidden !important; }
     .stButton > button { border-radius: 8px; font-weight: bold; transition: all 0.3s; }
     .stButton > button:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
-    /* 隐藏原生图片的全屏按钮，引导用户点击我们的高级查阅台 */
     button[title="View fullscreen"] { display: none !important; }
+
+    /* 🌟 核心：纯净的单图点击放大 CSS (无缝防屏蔽) */
+    .my-thumb { width: 100%; border-radius: 8px; transition: transform 0.2s; box-shadow: 0 2px 6px rgba(0,0,0,0.1); display: block; }
+    @media (hover: hover) { .my-thumb:hover { transform: scale(1.02); box-shadow: 0 6px 16px rgba(0,0,0,0.2); } }
+    .my-cb { display: none !important; }
+    .my-overlay { display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.92); z-index: 999999; align-items: center; justify-content: center; }
+    .my-cb:checked ~ .my-overlay { display: flex !important; }
+    .my-bg { position: absolute; top:0; left:0; width:100%; height:100%; cursor: zoom-out; z-index: 1; }
+    .my-modal-img { position: relative; z-index: 10; max-width: 90vw; max-height: 90vh; border-radius: 8px; box-shadow: 0 0 50px rgba(0,0,0,0.8); object-fit: contain; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -124,9 +132,9 @@ def parse_api_response(text):
     return None
 
 # ==========================================
-# 2. 独立沙盒引擎：专业查图工作台 (指哪打哪精准修复版)
+# 2. 高级图像查阅台 (仅在点击对比按钮时呼出)
 # ==========================================
-@st.dialog("🔍 高级图像查阅台", width="large")
+@st.dialog("🔍 高级同步对比台", width="large")
 def show_viewer_dialog(before_url, after_url):
     html_code = f"""
     <!DOCTYPE html>
@@ -141,14 +149,13 @@ def show_viewer_dialog(before_url, after_url):
             .viewer {{ display: flex; width: 100vw; height: calc(100vh - 60px); }}
             .panel {{ flex: 1; position: relative; overflow: hidden; display: flex; align-items: center; justify-content: center; }}
             .panel.left {{ border-right: 2px solid #555; }}
-            /* 精准算法的核心：transform-origin 必须为 0 0，由 JS 控制矩阵 */
             .panel img {{ max-width: 100%; max-height: 100%; cursor: grab; transform-origin: 0 0; will-change: transform; }}
             .label {{ position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.8); padding: 8px 20px; border-radius: 20px; border: 1px solid #555; pointer-events: none; font-weight: bold; letter-spacing: 1px; }}
         </style>
     </head>
     <body>
         <div class="toolbar">
-            <span style="font-size: 14px; color: #ccc;">💡 在图片上<b>滚动鼠标滚轮</b>指哪打哪，按住左键自由拖拽平移。双视角完全同步。</span>
+            <span style="font-size: 14px; color: #ccc;">💡 指哪打哪：在目标位置<b>滚动鼠标滚轮</b>，按住左键平移。双视角完全同步。</span>
             <div class="btn-group">
                 <button class="btn" onclick="zoomBtn(1.25)">➕ 放大</button>
                 <button class="btn" onclick="zoomBtn(0.8)">➖ 缩小</button>
@@ -156,20 +163,15 @@ def show_viewer_dialog(before_url, after_url):
             </div>
         </div>
         <div class="viewer" id="container">
-            {f'<div class="panel left"><img class="sync-img" src="{before_url}" draggable="false"><div class="label">📤 原图 (Before)</div></div>' if before_url else ''}
+            <div class="panel left"><img class="sync-img" src="{before_url}" draggable="false"><div class="label">📤 原图 (Before)</div></div>
             <div class="panel"><img class="sync-img" src="{after_url}" draggable="false"><div class="label">✨ 成品 (After)</div></div>
         </div>
 
         <script>
-            let scale = 1;
-            let pointX = 0, pointY = 0;
-            let start = {{ x: 0, y: 0 }};
-            let isPanning = false;
-
+            let scale = 1; let pointX = 0, pointY = 0; let start = {{ x: 0, y: 0 }}; let isPanning = false;
             const container = document.getElementById('container');
             const images = document.querySelectorAll('.sync-img');
 
-            // 核心：设置动画。滚轮/拖拽无动画以保证精准，按钮缩放有动画保证丝滑。
             function setTransform(animated = false) {{
                 images.forEach(img => {{
                     img.style.transition = animated ? 'transform 0.15s ease-out' : 'none';
@@ -185,48 +187,32 @@ def show_viewer_dialog(before_url, after_url):
                 images.forEach(img => img.style.cursor = 'grabbing');
             }};
 
-            window.onmouseup = () => {{
-                isPanning = false;
-                images.forEach(img => img.style.cursor = 'grab');
-            }};
-
+            window.onmouseup = () => {{ isPanning = false; images.forEach(img => img.style.cursor = 'grab'); }};
             window.onmousemove = (e) => {{
                 if (!isPanning) return;
-                pointX = e.clientX - start.x;
-                pointY = e.clientY - start.y;
-                setTransform(false); // 拖拽时关闭动画，防止粘滞感
+                pointX = e.clientX - start.x; pointY = e.clientY - start.y;
+                setTransform(false);
             }};
 
-            // 🌟 修复漂移的核心算法
             container.onwheel = (e) => {{
                 e.preventDefault();
-                
                 const panel = e.target.closest('.panel');
                 if (!panel) return;
                 const targetImg = panel.querySelector('.sync-img');
                 if (!targetImg) return;
 
-                // 为了拿到最精确的坐标，滚动时必须关闭 CSS 过渡动画
                 images.forEach(img => img.style.transition = 'none');
-
-                // 拿到当前图片在屏幕上的真实物理边界
                 const rect = targetImg.getBoundingClientRect();
-                
-                // 计算鼠标相对于图片左上角的绝对位置
                 const mouseX = e.clientX - rect.left;
                 const mouseY = e.clientY - rect.top;
-
-                // 换算成无缩放状态下的基准坐标
                 const xs = mouseX / scale;
                 const ys = mouseY / scale;
 
-                // 确定新的缩放比例
                 const delta = e.deltaY > 0 ? 0.85 : 1.15; 
                 let newScale = scale * delta;
                 if (newScale < 0.2) newScale = 0.2;
                 if (newScale > 20) newScale = 20;
 
-                // ✨ 漂移修复公式：补偿偏移量，让鼠标指向的像素点留在原地不动
                 pointX += xs * (scale - newScale);
                 pointY += ys * (scale - newScale);
 
@@ -234,18 +220,13 @@ def show_viewer_dialog(before_url, after_url):
                 setTransform(false);
             }};
 
-            // 面板按钮缩放逻辑：以右侧图片的中心点为基准放大
             function zoomBtn(factor) {{
                 const targetImg = images[images.length - 1]; 
                 if (!targetImg) return;
-                
                 const rect = targetImg.getBoundingClientRect();
                 const panelRect = targetImg.parentElement.getBoundingClientRect();
-                
-                // 以面板正中心为缩放锚点
                 const cx = panelRect.left + panelRect.width / 2;
                 const cy = panelRect.top + panelRect.height / 2;
-
                 const mouseX = cx - rect.left;
                 const mouseY = cy - rect.top;
                 const xs = mouseX / scale;
@@ -257,15 +238,11 @@ def show_viewer_dialog(before_url, after_url):
 
                 pointX += xs * (scale - newScale);
                 pointY += ys * (scale - newScale);
-                
                 scale = newScale;
-                setTransform(true); // 按钮缩放时开启丝滑过渡动画
-            }}
-
-            function resetView() {{
-                scale = 1; pointX = 0; pointY = 0;
                 setTransform(true);
             }}
+
+            function resetView() {{ scale = 1; pointX = 0; pointY = 0; setTransform(true); }}
         </script>
     </body>
     </html>
@@ -389,8 +366,22 @@ with col_main:
             for i, file in enumerate(uploaded_files):
                 data_uri = process_cached_data_uri(file.getvalue())
                 uploaded_b64_urls.append(data_uri) 
+                zoom_id = f"zm_up_{i}" 
                 with p_cols[i % 6]:
-                    st.image(data_uri, caption=f"图 {i+1}")
+                    html_str = (
+                        f'<div style="position:relative; margin-bottom:10px;">'
+                        f'<label for="{zoom_id}" style="display:block; cursor:zoom-in;">'
+                        f'<img src="{data_uri}" class="my-thumb">'
+                        f'<div style="text-align:center;font-size:11px;color:#aaa;margin-top:4px;">图 {i+1} (点击放大)</div>'
+                        f'</label>'
+                        f'<input type="checkbox" id="{zoom_id}" class="my-cb">'
+                        f'<div class="my-overlay">'
+                        f'<label for="{zoom_id}" class="my-bg"></label>'
+                        f'<img src="{data_uri}" class="my-modal-img">'
+                        f'</div>'
+                        f'</div>'
+                    )
+                    st.markdown(html_str, unsafe_allow_html=True)
         
         canvas_result = None
         if not uploaded_files: canvas_result = st_canvas(fill_color="rgba(255,165,0,0.3)", height=300, key="cvs")
@@ -484,14 +475,28 @@ with col_history:
                     src_urls = item.get('src_urls', []) 
                     
                     for i, url in enumerate(urls):
-                        st.image(url, use_container_width=True)
+                        modal_id = f"cb_{str(item['task_id']).replace('-','')}_{i}"
                         
+                        # 🌟 重构：重新引入最纯净的 CSS 单图点击放大
+                        html_str = (
+                            f'<div style="position:relative; margin-bottom:10px;">'
+                            f'<label for="{modal_id}" style="display:block; cursor:zoom-in;">'
+                            f'<img src="{url}" class="my-thumb">'
+                            f'<div style="text-align:center;font-size:11px;color:#aaa;margin-top:4px;">图 {i+1} (点击放大单图)</div>'
+                            f'</label>'
+                            f'<input type="checkbox" id="{modal_id}" class="my-cb">'
+                            f'<div class="my-overlay">'
+                            f'<label for="{modal_id}" class="my-bg"></label>'
+                            f'<img src="{url}" class="my-modal-img">'
+                            f'</div>'
+                            f'</div>'
+                        )
+                        st.markdown(html_str, unsafe_allow_html=True)
+                        
+                        # 🌟 仅对“图生图”结果补充“高级对比”按钮
                         if src_urls and i < len(src_urls):
-                            if st.button("🔍 开启高级对比 (原图 vs 成品)", key=f"btn_comp_{item['task_id']}_{i}", use_container_width=True):
+                            if st.button("🪟 开启高级对比 (原图 vs 成品)", key=f"btn_comp_{item['task_id']}_{i}", use_container_width=True):
                                 show_viewer_dialog(src_urls[i], url)
-                        else:
-                            if st.button("🔍 开启高级查阅 (放大细节)", key=f"btn_single_{item['task_id']}_{i}", use_container_width=True):
-                                show_viewer_dialog(None, url)
                             
                 elif item['status'] == 'failed': st.error(f"❌ 失败/未通过审查")
                 st.divider()
