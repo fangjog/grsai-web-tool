@@ -14,98 +14,21 @@ from supabase import create_client, Client
 import pytz 
 import urllib3
 
-# 🌟 绝杀烦人的日志警告：屏蔽底层的 HTTPS 证书未验证警告
+# 🌟 绝杀烦人的日志警告
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # ==========================================
 # 0. 网页基础配置与全局 CSS
 # ==========================================
-st.set_page_config(page_title="AI Pro Studio V6.51", page_icon="🚀", layout="wide", initial_sidebar_state="auto")
+st.set_page_config(page_title="AI Pro Studio V6.52", page_icon="🚀", layout="wide", initial_sidebar_state="auto")
 
 st.markdown("""
 <style>
     [data-testid="stVerticalBlock"] { overflow-x: hidden !important; }
     .stButton > button { border-radius: 8px; font-weight: bold; transition: all 0.3s; }
     .stButton > button:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
-    
-    .modal-checkbox { display: none !important; }
-    
-    .result-thumb {
-        width: 100%; border-radius: 8px; cursor: zoom-in; 
-        transition: transform 0.2s ease-in-out; 
-        box-shadow: 0 2px 6px rgba(0,0,0,0.1); margin-bottom: 8px;
-        display: block; opacity: 1 !important;
-    }
-    @media (hover: hover) { .result-thumb:hover { transform: scale(1.02); box-shadow: 0 6px 16px rgba(0,0,0,0.2); } }
-    
-    .img-modal-overlay {
-        display: none; position: fixed; z-index: 999999; top: 0; left: 0; 
-        width: 100vw; height: 100vh; align-items: center; justify-content: center; 
-    }
-    .modal-checkbox:checked ~ .img-modal-overlay { display: flex !important; }
-    
-    .modal-close-bg {
-        position: absolute; top:0; left:0; width:100%; height:100%; 
-        background: rgba(0,0,0,0.92); cursor: zoom-out; z-index: 1;
-    }
-    
-    .single-view {
-        position: relative; z-index: 10; max-width: 90vw; max-height: 90vh; 
-        border-radius: 12px; overflow: hidden; display: flex; align-items: center; justify-content: center;
-    }
-    .single-view img {
-        max-width: 90vw; max-height: 90vh; border-radius: 12px; 
-        box-shadow: 0 0 50px rgba(0,0,0,0.8); object-fit: contain; cursor: zoom-in;
-    }
-    
-    .toggle-compare-btn {
-        position: absolute; left: 20px; bottom: 20px; z-index: 15;
-        background: rgba(0,255,213,0.8); color: #000; padding: 10px 20px; 
-        border-radius: 8px; font-weight: bold; cursor: pointer;
-        box-shadow: 0 4px 12px rgba(0,255,213,0.3); transition: 0.2s;
-    }
-    @media (hover: hover) { .toggle-compare-btn:hover { background: #00ffd5; transform: translateY(-2px); } }
-    
-    .compare-radio { display: none; }
-    .compare-view { display: none; }
-    
-    .compare-radio:checked ~ .single-view { display: none; } 
-    .compare-radio:checked ~ .compare-view { display: flex; } 
-    
-    .compare-view {
-        position: relative; z-index: 10;
-        width: 85vw; max-width: 1400px; height: 85vh; 
-        background: #1e1e1e; border-radius: 12px;
-        flex-direction: column; box-shadow: 0 0 50px rgba(0,0,0,0.8);
-        border: 1px solid #444;
-    }
-    
-    .compare-header {
-        display: flex; justify-content: space-between; align-items: center;
-        padding: 15px 20px; background: #2a2a2a; border-radius: 12px 12px 0 0; border-bottom: 1px solid #444;
-    }
-    
-    .back-btn { background: #444; color: #fff; padding: 6px 16px; border-radius: 6px; cursor: pointer; transition: 0.2s; }
-    @media (hover: hover) { .back-btn:hover { background: #555; } }
-    .close-btn { color: #aaa; font-size: 32px; cursor: pointer; font-weight: bold; line-height: 0.8; margin-left:10px;}
-    @media (hover: hover) { .close-btn:hover { color: #ff4b4b; } }
-    
-    .view-side { flex: 1; display: flex; gap: 2px; background: #111; border-radius: 0 0 12px 12px; overflow: hidden; flex-direction: row;}
-    .side-panel { flex: 1; position: relative; background: #0b0b0b; display: flex; align-items: center; justify-content: center; overflow: hidden;}
-    .side-panel img { width: 100%; height: 100%; object-fit: contain; cursor: zoom-in; }
-    .side-label { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.8); color: #fff; padding: 8px 18px; border-radius: 20px; font-size: 15px; font-weight:bold; border: 1px solid #555; pointer-events: none;}
-
-    /* 📱 === 手机端自适应 === */
-    @media screen and (max-width: 768px) {
-        .compare-wrapper { width: 95vw !important; height: 90vh !important; }
-        .view-side { flex-direction: column !important; } 
-        .compare-header { padding: 10px 12px !important; }
-        .compare-header span { font-size: 14px !important; }
-        .back-btn { font-size: 12px !important; padding: 4px 10px !important; }
-        .close-btn { font-size: 26px !important; }
-        .side-label { font-size: 12px !important; bottom: 10px !important; padding: 4px 12px !important; }
-        .toggle-compare-btn { left: 50% !important; bottom: 15px !important; transform: translateX(-50%) !important; width: auto !important; text-align: center; font-size: 14px !important; padding: 8px 24px !important; }
-    }
+    /* 隐藏原生图片的全屏按钮，引导用户点击我们的高级查阅台 */
+    button[title="View fullscreen"] { display: none !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -201,7 +124,122 @@ def parse_api_response(text):
     return None
 
 # ==========================================
-# 2. 身份验证
+# 2. 独立沙盒引擎：专业查图工作台
+# ==========================================
+@st.dialog("🔍 高级图像查阅台", width="large")
+def show_viewer_dialog(before_url, after_url):
+    html_code = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <style>
+            body {{ margin: 0; padding: 0; background: #0e1117; color: white; font-family: sans-serif; overflow: hidden; user-select: none; }}
+            .toolbar {{ display: flex; justify-content: space-between; align-items: center; padding: 12px 20px; background: #262730; border-bottom: 1px solid #444; }}
+            .btn-group {{ display: flex; gap: 10px; }}
+            .btn {{ background: #00ffd5; color: black; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 14px; transition: 0.2s; }}
+            .btn:hover {{ background: #00c2ff; transform: scale(1.05); }}
+            .viewer {{ display: flex; width: 100vw; height: calc(100vh - 60px); }}
+            .panel {{ flex: 1; position: relative; overflow: hidden; display: flex; align-items: center; justify-content: center; }}
+            .panel.left {{ border-right: 2px solid #555; }}
+            .panel img {{ max-width: 100%; max-height: 100%; object-fit: contain; cursor: grab; transform-origin: 0 0; }}
+            .label {{ position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.8); padding: 8px 20px; border-radius: 20px; border: 1px solid #555; pointer-events: none; font-weight: bold; letter-spacing: 1px; }}
+        </style>
+    </head>
+    <body>
+        <div class="toolbar">
+            <span style="font-size: 14px; color: #ccc;">💡 在图片上<b>滚动鼠标滚轮</b>即可放大，按住鼠标拖拽平移。双图视角完全同步。</span>
+            <div class="btn-group">
+                <button class="btn" onclick="zoomBtn(1.25)">➕ 放大</button>
+                <button class="btn" onclick="zoomBtn(0.8)">➖ 缩小</button>
+                <button class="btn" onclick="resetView()" style="background: #444; color: white;">🔄 1:1 还原</button>
+            </div>
+        </div>
+        <div class="viewer" id="container">
+            {f'<div class="panel left"><img class="sync-img" src="{before_url}"><div class="label">📤 原图 (Before)</div></div>' if before_url else ''}
+            <div class="panel"><img class="sync-img" src="{after_url}"><div class="label">✨ 成品 (After)</div></div>
+        </div>
+
+        <script>
+            let scale = 1;
+            let pointX = 0, pointY = 0;
+            let start = {{ x: 0, y: 0 }};
+            let isPanning = false;
+
+            const container = document.getElementById('container');
+            const images = document.querySelectorAll('.sync-img');
+
+            function setTransform() {{
+                images.forEach(img => {{
+                    img.style.transform = `translate(${{pointX}}px, ${{pointY}}px) scale(${{scale}})`;
+                }});
+            }}
+
+            container.onmousedown = (e) => {{
+                e.preventDefault();
+                start = {{ x: e.clientX - pointX, y: e.clientY - pointY }};
+                isPanning = true;
+                images.forEach(img => img.style.cursor = 'grabbing');
+            }};
+
+            window.onmouseup = () => {{
+                isPanning = false;
+                images.forEach(img => img.style.cursor = 'grab');
+            }};
+
+            window.onmousemove = (e) => {{
+                if (!isPanning) return;
+                pointX = e.clientX - start.x;
+                pointY = e.clientY - start.y;
+                setTransform();
+            }};
+
+            container.onwheel = (e) => {{
+                e.preventDefault();
+                // 以鼠标所在位置为中心进行缩放运算，实现指哪打哪
+                const xs = (e.clientX - pointX) / scale;
+                const ys = (e.clientY - pointY) / scale;
+
+                const delta = e.deltaY > 0 ? 0.85 : 1.15; 
+                scale *= delta;
+                if (scale < 0.2) scale = 0.2;
+                if (scale > 20) scale = 20;
+
+                pointX = e.clientX - xs * scale;
+                pointY = e.clientY - ys * scale;
+
+                setTransform();
+            }};
+
+            // 提供给手机用户或点击党的按钮缩放逻辑
+            function zoomBtn(factor) {{
+                const rect = container.getBoundingClientRect();
+                const cx = rect.width / 2;
+                const cy = rect.height / 2;
+                const xs = (cx - pointX) / scale;
+                const ys = (cy - pointY) / scale;
+
+                scale *= factor;
+                if (scale < 0.2) scale = 0.2;
+                if (scale > 20) scale = 20;
+
+                pointX = cx - xs * scale;
+                pointY = cy - ys * scale;
+                setTransform();
+            }}
+
+            function resetView() {{
+                scale = 1; pointX = 0; pointY = 0;
+                setTransform();
+            }}
+        </script>
+    </body>
+    </html>
+    """
+    # 隔离在 iframe 中渲染，彻底切断 Streamlit 的拦截
+    components.html(html_code, height=750, scrolling=False)
+
+# ==========================================
+# 3. 身份验证
 # ==========================================
 query_key = st.query_params.get("key", "")
 card_info = get_card_info(query_key) if query_key else None
@@ -228,7 +266,7 @@ clean_api_name = (card_info.get('api_secret_name') or "API_VIP888").strip("'").s
 GRSAI_API_KEY = st.secrets.get(clean_api_name, "")
 
 # ==========================================
-# 3. 自动轮询 
+# 4. 自动轮询 
 # ==========================================
 def auto_poll_task(task_id, active_user_key, model_used, start_time, src_urls=None):
     placeholder = st.empty()
@@ -264,7 +302,7 @@ def auto_poll_task(task_id, active_user_key, model_used, start_time, src_urls=No
         time.sleep(3)
 
 # ==========================================
-# 4. 主界面
+# 5. 主界面
 # ==========================================
 st.sidebar.markdown(f'### 👤 用户中心\n`{user_key}`')
 st.sidebar.markdown(f"""
@@ -317,16 +355,8 @@ with col_main:
             for i, file in enumerate(uploaded_files):
                 data_uri = process_cached_data_uri(file.getvalue())
                 uploaded_b64_urls.append(data_uri) 
-                zoom_id = f"zm_up_{i}" 
                 with p_cols[i % 6]:
-                    html_str = (
-                        f'<div class="modal-wrapper" style="position:relative;">'
-                        f'<label for="{zoom_id}"><img src="{data_uri}" class="result-thumb" style="width:100%; border-radius:8px; cursor:zoom-in;"><div style="text-align:center; font-size:11px; color:#aaa; margin-top:2px;">图 {i+1} (点击放大)</div></label>'
-                        f'<input type="checkbox" id="{zoom_id}" class="modal-checkbox">'
-                        f'<div class="img-modal-overlay"><label for="{zoom_id}" class="modal-close-bg"></label><div class="single-view"><img src="{data_uri}"></div></div>'
-                        f'</div>'
-                    )
-                    st.markdown(html_str, unsafe_allow_html=True)
+                    st.image(data_uri, caption=f"图 {i+1}")
         
         canvas_result = None
         if not uploaded_files: canvas_result = st_canvas(fill_color="rgba(255,165,0,0.3)", height=300, key="cvs")
@@ -420,156 +450,16 @@ with col_history:
                     src_urls = item.get('src_urls', []) 
                     
                     for i, url in enumerate(urls):
-                        modal_id = f"cb_{str(item['task_id']).replace('-','')}_{i}"
+                        # 在记录列表中展示基础缩略图
+                        st.image(url, use_container_width=True)
                         
+                        # 生成高级查阅按钮
                         if src_urls and i < len(src_urls):
-                            before_url = src_urls[i]
-                            after_url = url
-                            html_str = (
-                                f'<div class="modal-wrapper" style="position:relative;">'
-                                f'<label for="{modal_id}" style="cursor:zoom-in;display:block;">'
-                                f'<img src="{after_url}" class="result-thumb" style="width:100%;border-radius:8px;box-shadow:0 2px 6px rgba(0,0,0,0.1);">'
-                                f'<div style="text-align:center;font-size:11px;color:#aaa;margin-top:4px;">图 {i+1} (点击对比)</div>'
-                                f'</label>'
-                                f'<input type="checkbox" id="{modal_id}" class="modal-checkbox">'
-                                f'<div class="img-modal-overlay">'
-                                    f'<label for="{modal_id}" class="modal-close-bg"></label>'
-                                    f'<input type="checkbox" id="compare_{modal_id}" class="compare-radio">'
-                                    f'<div class="single-view">'
-                                        f'<img src="{after_url}">'
-                                        f'<label for="compare_{modal_id}" class="toggle-compare-btn">✨ 左右对比原图</label>'
-                                    f'</div>'
-                                    f'<div class="compare-view">'
-                                        f'<div class="compare-header">'
-                                            f'<div><label for="compare_{modal_id}" class="back-btn">⬅️ 返回</label></div>'
-                                            f'<span style="color:#fff;font-size:16px;font-weight:bold;">🪟 图像优化对比 (滚轮放大，鼠标拖拽)</span>'
-                                            f'<label for="{modal_id}" class="close-btn">&times;</label>'
-                                        f'</div>'
-                                        f'<div class="view-side">'
-                                            f'<div class="side-panel"><img src="{before_url}"><div class="side-label">原图 (Before)</div></div>'
-                                            f'<div class="side-panel"><img src="{after_url}"><div class="side-label">成品 (After)</div></div>'
-                                        f'</div>'
-                                    f'</div>'
-                                f'</div>'
-                                f'</div>'
-                            )
-                            st.markdown(html_str, unsafe_allow_html=True)
+                            if st.button("🔍 开启高级对比 (原图 vs 成品)", key=f"btn_comp_{item['task_id']}_{i}", use_container_width=True):
+                                show_viewer_dialog(src_urls[i], url)
                         else:
-                            html_str = (
-                                f'<div class="modal-wrapper" style="position:relative;">'
-                                f'<label for="{modal_id}" style="cursor:zoom-in;display:block;">'
-                                f'<img src="{url}" class="result-thumb" style="width:100%;border-radius:8px;box-shadow:0 2px 6px rgba(0,0,0,0.1);">'
-                                f'</label>'
-                                f'<input type="checkbox" id="{modal_id}" class="modal-checkbox">'
-                                f'<div class="img-modal-overlay">'
-                                f'<label for="{modal_id}" class="modal-close-bg"></label>'
-                                f'<div class="single-view"><img src="{url}"></div>'
-                                f'</div>'
-                                f'</div>'
-                            )
-                            st.markdown(html_str, unsafe_allow_html=True)
+                            if st.button("🔍 开启高级查阅 (放大细节)", key=f"btn_single_{item['task_id']}_{i}", use_container_width=True):
+                                show_viewer_dialog(None, url)
                             
                 elif item['status'] == 'failed': st.error(f"❌ 失败/未通过审查")
                 st.divider()
-
-# ==========================================
-# 5. 全局注入：防屏蔽版 (恢复为绝对有效的 components.html)
-# ==========================================
-components.html("""
-<script>
-const parentDoc = window.parent.document;
-if (!parentDoc.getElementById('global-zoom-pan')) {
-    const marker = parentDoc.createElement('div');
-    marker.id = 'global-zoom-pan';
-    parentDoc.body.appendChild(marker);
-
-    let isDragging = false;
-    let startX, startY;
-    let activeImg = null;
-
-    parentDoc.addEventListener('wheel', function(e) {
-        if (window.innerWidth <= 768) return; 
-        const img = e.target;
-        if (img.tagName === 'IMG' && (img.closest('.side-panel') || img.closest('.single-view'))) {
-            e.preventDefault();
-            let scale = parseFloat(img.getAttribute('data-scale')) || 1;
-            let tx = parseFloat(img.getAttribute('data-tx')) || 0;
-            let ty = parseFloat(img.getAttribute('data-ty')) || 0;
-            
-            let delta = e.deltaY > 0 ? -0.3 : 0.3; 
-            if (scale === 1 && delta < 0) return; 
-            
-            if (scale === 1 && delta > 0) {
-                const rect = img.getBoundingClientRect();
-                const x = ((e.clientX - rect.left) / rect.width) * 100;
-                const y = ((e.clientY - rect.top) / rect.height) * 100;
-                img.style.transformOrigin = `${x}% ${y}%`;
-            }
-
-            scale += delta;
-            if (scale <= 1) { scale = 1; tx = 0; ty = 0; img.style.transformOrigin = `center center`; }
-            if (scale > 8) scale = 8; 
-
-            img.setAttribute('data-scale', scale);
-            img.setAttribute('data-tx', tx);
-            img.setAttribute('data-ty', ty);
-            
-            img.style.transition = 'transform 0.1s ease-out';
-            img.style.transform = `translate(${tx}px, ${ty}px) scale(${scale})`;
-            img.style.cursor = scale > 1 ? 'grab' : 'zoom-in';
-        }
-    }, {passive: false});
-
-    parentDoc.addEventListener('mousedown', (e) => {
-        if (window.innerWidth <= 768) return; 
-        const img = e.target;
-        if (img.tagName === 'IMG' && (img.closest('.side-panel') || img.closest('.single-view'))) {
-            let scale = parseFloat(img.getAttribute('data-scale')) || 1;
-            if (scale > 1) {
-                isDragging = true;
-                activeImg = img;
-                startX = e.clientX - (parseFloat(img.getAttribute('data-tx')) || 0);
-                startY = e.clientY - (parseFloat(img.getAttribute('data-ty')) || 0);
-                img.style.transition = 'none'; 
-                img.style.cursor = 'grabbing';
-                e.preventDefault();
-            }
-        }
-    });
-
-    parentDoc.addEventListener('mousemove', (e) => {
-        if (!isDragging || !activeImg) return;
-        let tx = e.clientX - startX;
-        let ty = e.clientY - startY;
-        let scale = parseFloat(activeImg.getAttribute('data-scale')) || 1;
-        
-        activeImg.setAttribute('data-tx', tx);
-        activeImg.setAttribute('data-ty', ty);
-        activeImg.style.transform = `translate(${tx}px, ${ty}px) scale(${scale})`;
-    });
-
-    const stopDrag = () => {
-        if (isDragging && activeImg) {
-            isDragging = false;
-            activeImg.style.cursor = 'grab';
-            activeImg.style.transition = 'transform 0.1s ease-out';
-            activeImg = null;
-        }
-    };
-    parentDoc.addEventListener('mouseup', stopDrag);
-    parentDoc.addEventListener('mouseleave', stopDrag);
-
-    parentDoc.addEventListener('click', function(e) {
-        if (e.target.classList.contains('modal-close-bg') || e.target.classList.contains('close-btn') || e.target.classList.contains('back-btn')) {
-            parentDoc.querySelectorAll('.side-panel img, .single-view img').forEach(img => {
-                img.setAttribute('data-scale', 1);
-                img.setAttribute('data-tx', 0);
-                img.setAttribute('data-ty', 0);
-                img.style.transform = 'translate(0px, 0px) scale(1)';
-                img.style.cursor = 'zoom-in';
-            });
-        }
-    });
-}
-</script>
-""", height=0, width=0)
