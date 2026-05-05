@@ -20,7 +20,7 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 # ==========================================
 # 0. 网页基础配置与全局 CSS
 # ==========================================
-st.set_page_config(page_title="AI Pro Studio V6.52", page_icon="🚀", layout="wide", initial_sidebar_state="auto")
+st.set_page_config(page_title="AI Pro Studio V6.53", page_icon="🚀", layout="wide", initial_sidebar_state="auto")
 
 st.markdown("""
 <style>
@@ -124,7 +124,7 @@ def parse_api_response(text):
     return None
 
 # ==========================================
-# 2. 独立沙盒引擎：专业查图工作台
+# 2. 独立沙盒引擎：专业查图工作台 (指哪打哪精准修复版)
 # ==========================================
 @st.dialog("🔍 高级图像查阅台", width="large")
 def show_viewer_dialog(before_url, after_url):
@@ -141,13 +141,14 @@ def show_viewer_dialog(before_url, after_url):
             .viewer {{ display: flex; width: 100vw; height: calc(100vh - 60px); }}
             .panel {{ flex: 1; position: relative; overflow: hidden; display: flex; align-items: center; justify-content: center; }}
             .panel.left {{ border-right: 2px solid #555; }}
-            .panel img {{ max-width: 100%; max-height: 100%; object-fit: contain; cursor: grab; transform-origin: 0 0; }}
+            /* 精准算法的核心：transform-origin 必须为 0 0，由 JS 控制矩阵 */
+            .panel img {{ max-width: 100%; max-height: 100%; cursor: grab; transform-origin: 0 0; will-change: transform; }}
             .label {{ position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.8); padding: 8px 20px; border-radius: 20px; border: 1px solid #555; pointer-events: none; font-weight: bold; letter-spacing: 1px; }}
         </style>
     </head>
     <body>
         <div class="toolbar">
-            <span style="font-size: 14px; color: #ccc;">💡 在图片上<b>滚动鼠标滚轮</b>即可放大，按住鼠标拖拽平移。双图视角完全同步。</span>
+            <span style="font-size: 14px; color: #ccc;">💡 在图片上<b>滚动鼠标滚轮</b>指哪打哪，按住左键自由拖拽平移。双视角完全同步。</span>
             <div class="btn-group">
                 <button class="btn" onclick="zoomBtn(1.25)">➕ 放大</button>
                 <button class="btn" onclick="zoomBtn(0.8)">➖ 缩小</button>
@@ -155,8 +156,8 @@ def show_viewer_dialog(before_url, after_url):
             </div>
         </div>
         <div class="viewer" id="container">
-            {f'<div class="panel left"><img class="sync-img" src="{before_url}"><div class="label">📤 原图 (Before)</div></div>' if before_url else ''}
-            <div class="panel"><img class="sync-img" src="{after_url}"><div class="label">✨ 成品 (After)</div></div>
+            {f'<div class="panel left"><img class="sync-img" src="{before_url}" draggable="false"><div class="label">📤 原图 (Before)</div></div>' if before_url else ''}
+            <div class="panel"><img class="sync-img" src="{after_url}" draggable="false"><div class="label">✨ 成品 (After)</div></div>
         </div>
 
         <script>
@@ -168,13 +169,16 @@ def show_viewer_dialog(before_url, after_url):
             const container = document.getElementById('container');
             const images = document.querySelectorAll('.sync-img');
 
-            function setTransform() {{
+            // 核心：设置动画。滚轮/拖拽无动画以保证精准，按钮缩放有动画保证丝滑。
+            function setTransform(animated = false) {{
                 images.forEach(img => {{
+                    img.style.transition = animated ? 'transform 0.15s ease-out' : 'none';
                     img.style.transform = `translate(${{pointX}}px, ${{pointY}}px) scale(${{scale}})`;
                 }});
             }}
 
             container.onmousedown = (e) => {{
+                if (e.target.tagName !== 'IMG' && !e.target.classList.contains('panel')) return;
                 e.preventDefault();
                 start = {{ x: e.clientX - pointX, y: e.clientY - pointY }};
                 isPanning = true;
@@ -190,52 +194,82 @@ def show_viewer_dialog(before_url, after_url):
                 if (!isPanning) return;
                 pointX = e.clientX - start.x;
                 pointY = e.clientY - start.y;
-                setTransform();
+                setTransform(false); // 拖拽时关闭动画，防止粘滞感
             }};
 
+            // 🌟 修复漂移的核心算法
             container.onwheel = (e) => {{
                 e.preventDefault();
-                // 以鼠标所在位置为中心进行缩放运算，实现指哪打哪
-                const xs = (e.clientX - pointX) / scale;
-                const ys = (e.clientY - pointY) / scale;
+                
+                const panel = e.target.closest('.panel');
+                if (!panel) return;
+                const targetImg = panel.querySelector('.sync-img');
+                if (!targetImg) return;
 
+                // 为了拿到最精确的坐标，滚动时必须关闭 CSS 过渡动画
+                images.forEach(img => img.style.transition = 'none');
+
+                // 拿到当前图片在屏幕上的真实物理边界
+                const rect = targetImg.getBoundingClientRect();
+                
+                // 计算鼠标相对于图片左上角的绝对位置
+                const mouseX = e.clientX - rect.left;
+                const mouseY = e.clientY - rect.top;
+
+                // 换算成无缩放状态下的基准坐标
+                const xs = mouseX / scale;
+                const ys = mouseY / scale;
+
+                // 确定新的缩放比例
                 const delta = e.deltaY > 0 ? 0.85 : 1.15; 
-                scale *= delta;
-                if (scale < 0.2) scale = 0.2;
-                if (scale > 20) scale = 20;
+                let newScale = scale * delta;
+                if (newScale < 0.2) newScale = 0.2;
+                if (newScale > 20) newScale = 20;
 
-                pointX = e.clientX - xs * scale;
-                pointY = e.clientY - ys * scale;
+                // ✨ 漂移修复公式：补偿偏移量，让鼠标指向的像素点留在原地不动
+                pointX += xs * (scale - newScale);
+                pointY += ys * (scale - newScale);
 
-                setTransform();
+                scale = newScale;
+                setTransform(false);
             }};
 
-            // 提供给手机用户或点击党的按钮缩放逻辑
+            // 面板按钮缩放逻辑：以右侧图片的中心点为基准放大
             function zoomBtn(factor) {{
-                const rect = container.getBoundingClientRect();
-                const cx = rect.width / 2;
-                const cy = rect.height / 2;
-                const xs = (cx - pointX) / scale;
-                const ys = (cy - pointY) / scale;
+                const targetImg = images[images.length - 1]; 
+                if (!targetImg) return;
+                
+                const rect = targetImg.getBoundingClientRect();
+                const panelRect = targetImg.parentElement.getBoundingClientRect();
+                
+                // 以面板正中心为缩放锚点
+                const cx = panelRect.left + panelRect.width / 2;
+                const cy = panelRect.top + panelRect.height / 2;
 
-                scale *= factor;
-                if (scale < 0.2) scale = 0.2;
-                if (scale > 20) scale = 20;
+                const mouseX = cx - rect.left;
+                const mouseY = cy - rect.top;
+                const xs = mouseX / scale;
+                const ys = mouseY / scale;
 
-                pointX = cx - xs * scale;
-                pointY = cy - ys * scale;
-                setTransform();
+                let newScale = scale * factor;
+                if (newScale < 0.2) newScale = 0.2;
+                if (newScale > 20) newScale = 20;
+
+                pointX += xs * (scale - newScale);
+                pointY += ys * (scale - newScale);
+                
+                scale = newScale;
+                setTransform(true); // 按钮缩放时开启丝滑过渡动画
             }}
 
             function resetView() {{
                 scale = 1; pointX = 0; pointY = 0;
-                setTransform();
+                setTransform(true);
             }}
         </script>
     </body>
     </html>
     """
-    # 隔离在 iframe 中渲染，彻底切断 Streamlit 的拦截
     components.html(html_code, height=750, scrolling=False)
 
 # ==========================================
@@ -450,10 +484,8 @@ with col_history:
                     src_urls = item.get('src_urls', []) 
                     
                     for i, url in enumerate(urls):
-                        # 在记录列表中展示基础缩略图
                         st.image(url, use_container_width=True)
                         
-                        # 生成高级查阅按钮
                         if src_urls and i < len(src_urls):
                             if st.button("🔍 开启高级对比 (原图 vs 成品)", key=f"btn_comp_{item['task_id']}_{i}", use_container_width=True):
                                 show_viewer_dialog(src_urls[i], url)
