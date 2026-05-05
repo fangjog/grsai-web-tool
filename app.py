@@ -16,7 +16,7 @@ import pytz
 # ==========================================
 # 0. 网页基础配置与全局 CSS
 # ==========================================
-st.set_page_config(page_title="AI Pro Studio V6.48", page_icon="🚀", layout="wide", initial_sidebar_state="auto")
+st.set_page_config(page_title="AI Pro Studio V6.49", page_icon="🚀", layout="wide", initial_sidebar_state="auto")
 
 st.markdown("""
 <style>
@@ -32,7 +32,6 @@ st.markdown("""
         box-shadow: 0 2px 6px rgba(0,0,0,0.1); margin-bottom: 8px;
         display: block; opacity: 1 !important;
     }
-    /* 电脑端才启用悬浮变大，防止手机端点击两次才生效 */
     @media (hover: hover) { .result-thumb:hover { transform: scale(1.02); box-shadow: 0 6px 16px rgba(0,0,0,0.2); } }
     
     .img-modal-overlay {
@@ -92,10 +91,10 @@ st.markdown("""
     .side-panel img { width: 100%; height: 100%; object-fit: contain; cursor: zoom-in; }
     .side-label { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.8); color: #fff; padding: 8px 18px; border-radius: 20px; font-size: 15px; font-weight:bold; border: 1px solid #555; pointer-events: none;}
 
-    /* 📱 === 手机端完美自适应核心代码 === */
+    /* 📱 === 手机端自适应 === */
     @media screen and (max-width: 768px) {
         .compare-wrapper { width: 95vw !important; height: 90vh !important; }
-        .view-side { flex-direction: column !important; } /* 手机端强制改为上下对比 */
+        .view-side { flex-direction: column !important; } 
         .compare-header { padding: 10px 12px !important; }
         .compare-header span { font-size: 14px !important; }
         .back-btn { font-size: 12px !important; padding: 4px 10px !important; }
@@ -225,16 +224,16 @@ clean_api_name = (card_info.get('api_secret_name') or "API_VIP888").strip("'").s
 GRSAI_API_KEY = st.secrets.get(clean_api_name, "")
 
 # ==========================================
-# 3. 自动轮询
+# 3. 自动轮询 
 # ==========================================
 def auto_poll_task(task_id, active_user_key, model_used, start_time, src_urls=None):
     placeholder = st.empty()
     headers = {"Authorization": f"Bearer {GRSAI_API_KEY}", "Content-Type": "application/json"}
     query_url = "https://grsai.dakka.com.cn/v1/draw/result"
     
-    for i in range(90):
-        p = min(5 + int((time.time() - start_time) * 1.5), 98) 
-        placeholder.markdown(f'<div style="background:#111;border-radius:10px;padding:4px;border:1px solid #333;"><div style="height:12px;border-radius:6px;background:linear-gradient(90deg,#00c2ff,#00ffd5);width:{p}%;"></div></div><div style="text-align:right;color:#00ffd5;font-size:12px;margin-top:4px;">⚡ 生成中... {p}%</div>', unsafe_allow_html=True)
+    for i in range(300):
+        p = min(5 + int((time.time() - start_time) * 0.2), 98) 
+        placeholder.markdown(f'<div style="background:#111;border-radius:10px;padding:4px;border:1px solid #333;"><div style="height:12px;border-radius:6px;background:linear-gradient(90deg,#00c2ff,#00ffd5);width:{p}%;"></div></div><div style="text-align:right;color:#00ffd5;font-size:12px;margin-top:4px;">⚡ 正在排队/生成中... {p}% (耗时较长请耐心等待)</div>', unsafe_allow_html=True)
         try:
             resp = requests.post(query_url, headers=headers, json={"id": task_id}, verify=False, timeout=10)
             q_res = parse_api_response(resp.text) 
@@ -258,7 +257,7 @@ def auto_poll_task(task_id, active_user_key, model_used, start_time, src_urls=No
                     sync_task_to_db({"task_id": task_id, "status": "failed"}, active_user_key)
                     st.rerun(); return
         except Exception as e: pass
-        time.sleep(2)
+        time.sleep(3)
 
 # ==========================================
 # 4. 主界面
@@ -318,7 +317,7 @@ with col_main:
                 with p_cols[i % 6]:
                     html_str = (
                         f'<div class="modal-wrapper" style="position:relative;">'
-                        f'<label for="{zoom_id}"><img src="{data_uri}" class="result-thumb" style="width:100%; border-radius:8px;"><div style="text-align:center; font-size:11px; color:#aaa; margin-top:2px;">图 {i+1} (点击放大)</div></label>'
+                        f'<label for="{zoom_id}"><img src="{data_uri}" class="result-thumb" style="width:100%; border-radius:8px; cursor:zoom-in;"><div style="text-align:center; font-size:11px; color:#aaa; margin-top:2px;">图 {i+1} (点击放大)</div></label>'
                         f'<input type="checkbox" id="{zoom_id}" class="modal-checkbox">'
                         f'<div class="img-modal-overlay"><label for="{zoom_id}" class="modal-close-bg"></label><div class="single-view"><img src="{data_uri}"></div></div>'
                         f'</div>'
@@ -439,7 +438,7 @@ with col_history:
                                     f'<div class="compare-view">'
                                         f'<div class="compare-header">'
                                             f'<div><label for="compare_{modal_id}" class="back-btn">⬅️ 返回</label></div>'
-                                            f'<span style="color:#fff;font-size:16px;font-weight:bold;">🪟 图像优化对比 (电脑滚轮放大)</span>'
+                                            f'<span style="color:#fff;font-size:16px;font-weight:bold;">🪟 图像优化对比 (滚轮放大，鼠标拖拽)</span>'
                                             f'<label for="{modal_id}" class="close-btn">&times;</label>'
                                         f'</div>'
                                         f'<div class="view-side">'
@@ -470,7 +469,7 @@ with col_history:
                 st.divider()
 
 # ==========================================
-# 5. 全局注入：电脑端滚轮防拦截放大脚本 (移动至最底部防覆盖)
+# 5. 全局注入：防屏蔽版
 # ==========================================
 components.html("""
 <script>
@@ -518,7 +517,7 @@ if (!parentDoc.getElementById('global-zoom-pan')) {
     }, {passive: false});
 
     parentDoc.addEventListener('mousedown', (e) => {
-        if (window.innerWidth <= 768) return; // 手机端不处理鼠标拖拽
+        if (window.innerWidth <= 768) return; 
         const img = e.target;
         if (img.tagName === 'IMG' && (img.closest('.side-panel') || img.closest('.single-view'))) {
             let scale = parseFloat(img.getAttribute('data-scale')) || 1;
@@ -569,4 +568,4 @@ if (!parentDoc.getElementById('global-zoom-pan')) {
     });
 }
 </script>
-""", height=0, width=0, style="position: absolute; pointer-events: none;")
+""", height=0, width=0)
