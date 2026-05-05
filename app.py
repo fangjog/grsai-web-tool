@@ -13,14 +13,17 @@ from streamlit_drawable_canvas import st_canvas
 from supabase import create_client, Client
 import pytz 
 import urllib3
+import warnings
 
-# 🌟 绝杀烦人的日志警告
+# 🌟 绝杀烦人的日志警告：彻底屏蔽 HTTPS 警告和 Streamlit 的旧版组件弃用警告
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+warnings.filterwarnings("ignore", category=DeprecationWarning)
+warnings.filterwarnings("ignore", message=".*st.components.v1.html.*")
 
 # ==========================================
 # 0. 网页基础配置与全局 CSS
 # ==========================================
-st.set_page_config(page_title="AI Pro Studio V6.54", page_icon="🚀", layout="wide", initial_sidebar_state="auto")
+st.set_page_config(page_title="AI Pro Studio V6.55", page_icon="🚀", layout="wide", initial_sidebar_state="auto")
 
 st.markdown("""
 <style>
@@ -29,14 +32,15 @@ st.markdown("""
     .stButton > button:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
     button[title="View fullscreen"] { display: none !important; }
 
-    /* 🌟 核心：纯净的单图点击放大 CSS (无缝防屏蔽) */
+    /* 🌟 核心：单图点击全屏放大 CSS */
     .my-thumb { width: 100%; border-radius: 8px; transition: transform 0.2s; box-shadow: 0 2px 6px rgba(0,0,0,0.1); display: block; }
     @media (hover: hover) { .my-thumb:hover { transform: scale(1.02); box-shadow: 0 6px 16px rgba(0,0,0,0.2); } }
     .my-cb { display: none !important; }
-    .my-overlay { display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.92); z-index: 999999; align-items: center; justify-content: center; }
+    .my-overlay { display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.92); z-index: 999999; align-items: center; justify-content: center; overflow: hidden; }
     .my-cb:checked ~ .my-overlay { display: flex !important; }
     .my-bg { position: absolute; top:0; left:0; width:100%; height:100%; cursor: zoom-out; z-index: 1; }
-    .my-modal-img { position: relative; z-index: 10; max-width: 90vw; max-height: 90vh; border-radius: 8px; box-shadow: 0 0 50px rgba(0,0,0,0.8); object-fit: contain; }
+    /* 单图缩放核心属性 */
+    .my-modal-img { position: relative; z-index: 10; max-width: 90vw; max-height: 90vh; border-radius: 8px; box-shadow: 0 0 50px rgba(0,0,0,0.8); object-fit: contain; transform-origin: 0 0; will-change: transform; cursor: grab; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -132,9 +136,9 @@ def parse_api_response(text):
     return None
 
 # ==========================================
-# 2. 高级图像查阅台 (仅在点击对比按钮时呼出)
+# 2. 高级同步对比台 (仅在图生图点击对比按钮时呼出)
 # ==========================================
-@st.dialog("🔍 同步对比", width="large")
+@st.dialog("🔍 高级同步对比台", width="large")
 def show_viewer_dialog(before_url, after_url):
     html_code = f"""
     <!DOCTYPE html>
@@ -155,7 +159,7 @@ def show_viewer_dialog(before_url, after_url):
     </head>
     <body>
         <div class="toolbar">
-            <span style="font-size: 14px; color: #ccc;">💡 在目标位置<b>滚动鼠标滚轮</b>，按住左键平移。双视角完全同步。</span>
+            <span style="font-size: 14px; color: #ccc;">💡 指哪打哪：在目标位置<b>滚动鼠标滚轮</b>，按住左键平移。双视角完全同步。</span>
             <div class="btn-group">
                 <button class="btn" onclick="zoomBtn(1.25)">➕ 放大</button>
                 <button class="btn" onclick="zoomBtn(0.8)">➖ 缩小</button>
@@ -377,7 +381,7 @@ with col_main:
                         f'<input type="checkbox" id="{zoom_id}" class="my-cb">'
                         f'<div class="my-overlay">'
                         f'<label for="{zoom_id}" class="my-bg"></label>'
-                        f'<img src="{data_uri}" class="my-modal-img">'
+                        f'<img src="{data_uri}" class="my-modal-img" draggable="false">'
                         f'</div>'
                         f'</div>'
                     )
@@ -477,26 +481,127 @@ with col_history:
                     for i, url in enumerate(urls):
                         modal_id = f"cb_{str(item['task_id']).replace('-','')}_{i}"
                         
-                        # 🌟 重构：重新引入最纯净的 CSS 单图点击放大
+                        # 单图瞬间放大，并自带精准缩放拖拽功能
                         html_str = (
                             f'<div style="position:relative; margin-bottom:10px;">'
                             f'<label for="{modal_id}" style="display:block; cursor:zoom-in;">'
                             f'<img src="{url}" class="my-thumb">'
-                            f'<div style="text-align:center;font-size:11px;color:#aaa;margin-top:4px;">图 {i+1} (点击放大单图)</div>'
+                            f'<div style="text-align:center;font-size:11px;color:#aaa;margin-top:4px;">图 {i+1} (点击放大，滚轮缩放)</div>'
                             f'</label>'
                             f'<input type="checkbox" id="{modal_id}" class="my-cb">'
                             f'<div class="my-overlay">'
                             f'<label for="{modal_id}" class="my-bg"></label>'
-                            f'<img src="{url}" class="my-modal-img">'
+                            f'<img src="{url}" class="my-modal-img" draggable="false">'
                             f'</div>'
                             f'</div>'
                         )
                         st.markdown(html_str, unsafe_allow_html=True)
                         
-                        # 🌟 仅对“图生图”结果补充“高级对比”按钮
                         if src_urls and i < len(src_urls):
-                            if st.button("🪟 同步对比 (原图 vs 成图)", key=f"btn_comp_{item['task_id']}_{i}", use_container_width=True):
+                            if st.button("🪟 开启高级对比 (原图 vs 成品)", key=f"btn_comp_{item['task_id']}_{i}", use_container_width=True):
                                 show_viewer_dialog(src_urls[i], url)
                             
                 elif item['status'] == 'failed': st.error(f"❌ 失败/未通过审查")
                 st.divider()
+
+# ==========================================
+# 6. 单图放大核心计算引擎 (屏蔽了错误日志)
+# ==========================================
+components.html("""
+<script>
+    const parentDoc = window.parent.document;
+    if (!parentDoc.getElementById('global-single-zoom')) {
+        const marker = parentDoc.createElement('div');
+        marker.id = 'global-single-zoom';
+        parentDoc.body.appendChild(marker);
+
+        let isDragging = false;
+        let startX, startY;
+        let activeImg = null;
+
+        parentDoc.addEventListener('wheel', function(e) {
+            if (window.innerWidth <= 768) return; 
+            const img = e.target;
+            // 拦截所有纯净大图
+            if (img.tagName === 'IMG' && img.classList.contains('my-modal-img')) {
+                e.preventDefault();
+                let scale = parseFloat(img.getAttribute('data-scale')) || 1;
+                let tx = parseFloat(img.getAttribute('data-tx')) || 0;
+                let ty = parseFloat(img.getAttribute('data-ty')) || 0;
+                
+                img.style.transition = 'none';
+                const rect = img.getBoundingClientRect();
+                const mouseX = e.clientX - rect.left;
+                const mouseY = e.clientY - rect.top;
+                const xs = mouseX / scale;
+                const ys = mouseY / scale;
+
+                const delta = e.deltaY > 0 ? 0.85 : 1.15; 
+                let newScale = scale * delta;
+                if (newScale < 0.2) newScale = 0.2;
+                if (newScale > 20) newScale = 20;
+
+                tx += xs * (scale - newScale);
+                ty += ys * (scale - newScale);
+
+                img.setAttribute('data-scale', newScale);
+                img.setAttribute('data-tx', tx);
+                img.setAttribute('data-ty', ty);
+                
+                img.style.transformOrigin = `0 0`;
+                img.style.transform = `translate(${tx}px, ${ty}px) scale(${newScale})`;
+            }
+        }, {passive: false});
+
+        parentDoc.addEventListener('mousedown', (e) => {
+            if (window.innerWidth <= 768) return; 
+            const img = e.target;
+            if (img.tagName === 'IMG' && img.classList.contains('my-modal-img')) {
+                let scale = parseFloat(img.getAttribute('data-scale')) || 1;
+                if (scale > 1) {
+                    isDragging = true;
+                    activeImg = img;
+                    startX = e.clientX - (parseFloat(img.getAttribute('data-tx')) || 0);
+                    startY = e.clientY - (parseFloat(img.getAttribute('data-ty')) || 0);
+                    img.style.transition = 'none'; 
+                    img.style.cursor = 'grabbing';
+                    e.preventDefault();
+                }
+            }
+        });
+
+        parentDoc.addEventListener('mousemove', (e) => {
+            if (!isDragging || !activeImg) return;
+            let tx = e.clientX - startX;
+            let ty = e.clientY - startY;
+            let scale = parseFloat(activeImg.getAttribute('data-scale')) || 1;
+            
+            activeImg.setAttribute('data-tx', tx);
+            activeImg.setAttribute('data-ty', ty);
+            activeImg.style.transform = `translate(${tx}px, ${ty}px) scale(${scale})`;
+        });
+
+        const stopDrag = () => {
+            if (isDragging && activeImg) {
+                isDragging = false;
+                activeImg.style.cursor = 'grab';
+                activeImg = null;
+            }
+        };
+        parentDoc.addEventListener('mouseup', stopDrag);
+        parentDoc.addEventListener('mouseleave', stopDrag);
+
+        // 点击黑边关闭时重置坐标，避免下次打开乱跑
+        parentDoc.addEventListener('click', function(e) {
+            if (e.target.classList.contains('my-bg')) {
+                parentDoc.querySelectorAll('.my-modal-img').forEach(img => {
+                    img.setAttribute('data-scale', 1);
+                    img.setAttribute('data-tx', 0);
+                    img.setAttribute('data-ty', 0);
+                    img.style.transform = 'translate(0px, 0px) scale(1)';
+                });
+            }
+        });
+    }
+</script>
+""", height=0, width=0)
