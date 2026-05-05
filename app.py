@@ -1,5 +1,6 @@
 # 文件名: app.py
 import streamlit as st
+import streamlit.components.v1 as components
 import requests
 import time
 from PIL import Image
@@ -19,7 +20,7 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 # ==========================================
 # 0. 网页基础配置与全局 CSS
 # ==========================================
-st.set_page_config(page_title="AI Pro Studio V6.50", page_icon="🚀", layout="wide", initial_sidebar_state="auto")
+st.set_page_config(page_title="AI Pro Studio V6.51", page_icon="🚀", layout="wide", initial_sidebar_state="auto")
 
 st.markdown("""
 <style>
@@ -472,9 +473,9 @@ with col_history:
                 st.divider()
 
 # ==========================================
-# 5. 全局注入：防屏蔽版 (替换为最新的 st.html 规范写法)
+# 5. 全局注入：防屏蔽版 (恢复为绝对有效的 components.html)
 # ==========================================
-st.html("""
+components.html("""
 <script>
 const parentDoc = window.parent.document;
 if (!parentDoc.getElementById('global-zoom-pan')) {
@@ -571,4 +572,4 @@ if (!parentDoc.getElementById('global-zoom-pan')) {
     });
 }
 </script>
-""")
+""", height=0, width=0)
