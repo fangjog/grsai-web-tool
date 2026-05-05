@@ -155,7 +155,7 @@ def show_viewer_dialog(before_url, after_url):
     </head>
     <body>
         <div class="toolbar">
-            <span style="font-size: 14px; color: #ccc;">💡 指哪打哪：在目标位置<b>滚动鼠标滚轮</b>，按住左键平移。双视角完全同步。</span>
+            <span style="font-size: 14px; color: #ccc;">💡 在目标位置<b>滚动鼠标滚轮</b>，按住左键平移。双视角完全同步。</span>
             <div class="btn-group">
                 <button class="btn" onclick="zoomBtn(1.25)">➕ 放大</button>
                 <button class="btn" onclick="zoomBtn(0.8)">➖ 缩小</button>
