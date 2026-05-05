@@ -134,7 +134,7 @@ def parse_api_response(text):
 # ==========================================
 # 2. 高级图像查阅台 (仅在点击对比按钮时呼出)
 # ==========================================
-@st.dialog("🔍 高级同步对比台", width="large")
+@st.dialog("🔍 同步对比", width="large")
 def show_viewer_dialog(before_url, after_url):
     html_code = f"""
     <!DOCTYPE html>
@@ -495,7 +495,7 @@ with col_history:
                         
                         # 🌟 仅对“图生图”结果补充“高级对比”按钮
                         if src_urls and i < len(src_urls):
-                            if st.button("🪟 开启高级对比 (原图 vs 成品)", key=f"btn_comp_{item['task_id']}_{i}", use_container_width=True):
+                            if st.button("🪟 同步对比 (原图 vs 成图)", key=f"btn_comp_{item['task_id']}_{i}", use_container_width=True):
                                 show_viewer_dialog(src_urls[i], url)
                             
                 elif item['status'] == 'failed': st.error(f"❌ 失败/未通过审查")
