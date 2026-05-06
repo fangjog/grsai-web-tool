@@ -23,18 +23,22 @@ warnings.filterwarnings("ignore", message=".*st.components.v1.html.*")
 # ==========================================
 # 0. 网页基础配置与全局 CSS
 # ==========================================
-st.set_page_config(page_title="AI Pro Studio V6.57", page_icon="🚀", layout="wide", initial_sidebar_state="auto")
+st.set_page_config(page_title="AI Pro Studio V6.58", page_icon="🚀", layout="wide", initial_sidebar_state="auto")
 
 st.markdown("""
 <style>
     [data-testid="stVerticalBlock"] { overflow-x: hidden !important; }
     .stButton > button { border-radius: 8px; font-weight: bold; transition: all 0.3s; }
     .stButton > button:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
-    /* 隐藏原生图片的全屏按钮，引导用户点击我们的高级查阅台 */
     button[title="View fullscreen"] { display: none !important; }
     
-    /* 缩略图增强 */
-    .thumb-img { border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,0.1); }
+    .my-thumb { width: 100%; border-radius: 8px; transition: transform 0.2s; box-shadow: 0 2px 6px rgba(0,0,0,0.1); display: block; }
+    @media (hover: hover) { .my-thumb:hover { transform: scale(1.02); box-shadow: 0 6px 16px rgba(0,0,0,0.2); } }
+    .my-cb { display: none !important; }
+    .my-overlay { display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.92); z-index: 999999; align-items: center; justify-content: center; overflow: hidden; }
+    .my-cb:checked ~ .my-overlay { display: flex !important; }
+    .my-bg { position: absolute; top:0; left:0; width:100%; height:100%; cursor: zoom-out; z-index: 1; }
+    .my-modal-img { position: relative; z-index: 10; max-width: 90vw; max-height: 90vh; border-radius: 8px; box-shadow: 0 0 50px rgba(0,0,0,0.8); object-fit: contain; transform-origin: 0 0; will-change: transform; cursor: grab; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -42,7 +46,11 @@ st.markdown("""
 # 1. 常量、数据库与缓存加速引擎
 # ==========================================
 MODEL_COSTS = {"gpt-image-2": 600, "gpt-image-2-vip": 900}
-ratio_opts = ["auto", "1:1", "3:2", "2:3", "16:9", "9:16", "5:4", "4:5", "4:3", "3:4", "21:9", "9:21", "1:3", "3:1", "2:1", "1:2", "自定义像素"]
+
+# 🌟 更新：去除了画幅比例中的“自定义像素”，独立拆分
+ratio_opts = ["auto", "1:1", "3:2", "2:3", "16:9", "9:16", "5:4", "4:5", "4:3", "3:4", "21:9", "9:21", "1:3", "3:1", "2:1", "1:2"]
+# 🌟 新增：独立的像素精度选项
+pixel_opts = ["默认", "1k", "2k", "4k", "6k", "自定义"]
 quality_opts = ["auto", "high", "medium", "low"]
 BJ_TZ = pytz.timezone('Asia/Shanghai')
 
@@ -130,19 +138,10 @@ def parse_api_response(text):
     return None
 
 # ==========================================
-# 2. 独立沙盒引擎：单图/双图 高级查阅台
+# 2. 高级同步对比台
 # ==========================================
-@st.dialog("🔍 高级图像查阅台", width="large")
-def show_viewer_dialog(after_url, before_url=None):
-    # 根据是否传入 before_url 自动切换 单图 / 双图并排
-    is_dual = before_url is not None
-    panels_html = ""
-    
-    if is_dual:
-        panels_html += f'<div class="panel left"><img class="sync-img" src="{before_url}" draggable="false"><div class="label">📤 原图 (Before)</div></div>'
-    
-    panels_html += f'<div class="panel"><img class="sync-img" src="{after_url}" draggable="false"><div class="label">✨ 成品 (After)</div></div>'
-
+@st.dialog("🔍 高级同步对比台", width="large")
+def show_viewer_dialog(before_url, after_url):
     html_code = f"""
     <!DOCTYPE html>
     <html>
@@ -156,13 +155,13 @@ def show_viewer_dialog(after_url, before_url=None):
             .viewer {{ display: flex; width: 100vw; height: calc(100vh - 60px); }}
             .panel {{ flex: 1; position: relative; overflow: hidden; display: flex; align-items: center; justify-content: center; }}
             .panel.left {{ border-right: 2px solid #555; }}
-            .panel img {{ max-width: 100%; max-height: 100%; cursor: zoom-in; transform-origin: 0 0; will-change: transform; }}
+            .panel img {{ max-width: 100%; max-height: 100%; cursor: grab; transform-origin: 0 0; will-change: transform; }}
             .label {{ position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.8); padding: 8px 20px; border-radius: 20px; border: 1px solid #555; pointer-events: none; font-weight: bold; letter-spacing: 1px; }}
         </style>
     </head>
     <body>
         <div class="toolbar">
-            <span style="font-size: 14px; color: #ccc;">💡 <b>点击左键</b>一键放大，<b>滚轮</b>无极缩放，按住可拖拽平移。</span>
+            <span style="font-size: 14px; color: #ccc;">💡 指哪打哪：在目标位置<b>滚动鼠标滚轮</b>，按住左键平移。双视角完全同步。</span>
             <div class="btn-group">
                 <button class="btn" onclick="zoomBtn(1.25)">➕ 放大</button>
                 <button class="btn" onclick="zoomBtn(0.8)">➖ 缩小</button>
@@ -170,12 +169,12 @@ def show_viewer_dialog(after_url, before_url=None):
             </div>
         </div>
         <div class="viewer" id="container">
-            {panels_html}
+            <div class="panel left"><img class="sync-img" src="{before_url}" draggable="false"><div class="label">📤 原图 (Before)</div></div>
+            <div class="panel"><img class="sync-img" src="{after_url}" draggable="false"><div class="label">✨ 成品 (After)</div></div>
         </div>
 
         <script>
-            let scale = 1; let pointX = 0, pointY = 0; let start = {{ x: 0, y: 0 }}; 
-            let isPanning = false; let hasMoved = false;
+            let scale = 1; let pointX = 0, pointY = 0; let start = {{ x: 0, y: 0 }}; let isPanning = false;
             const container = document.getElementById('container');
             const images = document.querySelectorAll('.sync-img');
 
@@ -183,8 +182,6 @@ def show_viewer_dialog(after_url, before_url=None):
                 images.forEach(img => {{
                     img.style.transition = animated ? 'transform 0.15s ease-out' : 'none';
                     img.style.transform = `translate(${{pointX}}px, ${{pointY}}px) scale(${{scale}})`;
-                    // 更新鼠标样式
-                    img.style.cursor = scale > 1 ? (isPanning ? 'grabbing' : 'grab') : 'zoom-in';
                 }});
             }}
 
@@ -193,49 +190,14 @@ def show_viewer_dialog(after_url, before_url=None):
                 e.preventDefault();
                 start = {{ x: e.clientX - pointX, y: e.clientY - pointY }};
                 isPanning = true;
-                hasMoved = false;
                 images.forEach(img => img.style.cursor = 'grabbing');
             }};
 
+            window.onmouseup = () => {{ isPanning = false; images.forEach(img => img.style.cursor = 'grab'); }};
             window.onmousemove = (e) => {{
                 if (!isPanning) return;
-                hasMoved = true;
                 pointX = e.clientX - start.x; pointY = e.clientY - start.y;
                 setTransform(false);
-            }};
-
-            window.onmouseup = (e) => {{
-                if (isPanning) {{
-                    isPanning = false;
-                    
-                    // 如果没有移动，就是点击事件！执行一键放大/缩小
-                    if (!hasMoved) {{
-                        const targetImg = e.target.closest('.panel')?.querySelector('img');
-                        if (targetImg) {{
-                            if (scale === 1) {{
-                                // 放大到 2.5倍
-                                const rect = targetImg.getBoundingClientRect();
-                                const mouseX = e.clientX - rect.left;
-                                const mouseY = e.clientY - rect.top;
-                                const xs = mouseX / scale;
-                                const ys = mouseY / scale;
-
-                                scale = 2.5;
-                                pointX += xs * (1 - scale);
-                                pointY += ys * (1 - scale);
-                                setTransform(true);
-                            }} else {{
-                                // 还原到 1倍
-                                scale = 1; pointX = 0; pointY = 0;
-                                setTransform(true);
-                            }}
-                            return; // 结束，不执行拖拽游标更新
-                        }}
-                    }}
-                    
-                    // 仅更新鼠标样式
-                    images.forEach(img => img.style.cursor = scale > 1 ? 'grab' : 'zoom-in');
-                }}
             }};
 
             container.onwheel = (e) => {{
@@ -254,12 +216,11 @@ def show_viewer_dialog(after_url, before_url=None):
 
                 const delta = e.deltaY > 0 ? 0.85 : 1.15; 
                 let newScale = scale * delta;
-                if (newScale <= 1) {{ newScale = 1; pointX = 0; pointY = 0; }}
-                else if (newScale > 20) newScale = 20;
-                else {{
-                    pointX += xs * (scale - newScale);
-                    pointY += ys * (scale - newScale);
-                }}
+                if (newScale < 0.2) newScale = 0.2;
+                if (newScale > 20) newScale = 20;
+
+                pointX += xs * (scale - newScale);
+                pointY += ys * (scale - newScale);
 
                 scale = newScale;
                 setTransform(false);
@@ -411,8 +372,23 @@ with col_main:
             for i, file in enumerate(uploaded_files):
                 data_uri = process_cached_data_uri(file.getvalue())
                 uploaded_b64_urls.append(data_uri) 
+                zoom_id = f"zm_up_{i}" 
                 with p_cols[i % 6]:
-                    st.image(data_uri, caption=f"图 {i+1}")
+                    html_str = (
+                        f'<div style="position:relative; margin-bottom:10px;">'
+                        f'<label for="{zoom_id}" style="display:block; cursor:zoom-in;">'
+                        f'<img src="{data_uri}" class="my-thumb">'
+                        f'<div style="text-align:center;font-size:11px;color:#aaa;margin-top:4px;">图 {i+1} (点击放大)</div>'
+                        f'</label>'
+                        f'<input type="checkbox" id="{zoom_id}" class="my-cb">'
+                        f'<div class="my-overlay">'
+                        f'<label for="{zoom_id}" class="my-bg"></label>'
+                        f'<div style="position:absolute; top:20px; color:#fff; background:rgba(0,0,0,0.6); padding:6px 16px; border-radius:20px; font-size:13px; pointer-events:none; z-index:20;">💡 点击图片 或 滚动滚轮 均可缩放，按住拖拽</div>'
+                        f'<img src="{data_uri}" class="my-modal-img" draggable="false">'
+                        f'</div>'
+                        f'</div>'
+                    )
+                    st.markdown(html_str, unsafe_allow_html=True)
         
         canvas_result = None
         if not uploaded_files: canvas_result = st_canvas(fill_color="rgba(255,165,0,0.3)", height=300, key="cvs")
@@ -422,10 +398,18 @@ with col_main:
         
     if prompt_txt != st.session_state.current_prompt: st.session_state.current_prompt = prompt_txt
 
-    c1, c2 = st.columns(2)
-    with c1: aspect_ratio = st.selectbox("📏 画幅比例", ratio_opts, key=f"r_{menu}")
-    custom_size = st.text_input("自定义像素 (WxH)", key=f"c_{menu}") if aspect_ratio == "自定义像素" else ""
-    with c2: quality = st.selectbox("💎 图片质量", quality_opts, key=f"q_{menu}")
+    # 🌟 核心升级：拆分参数控制区，独立“比例”与“分辨率”
+    c1, c2, c3 = st.columns(3)
+    with c1: 
+        aspect_ratio = st.selectbox("📏 画幅比例", ratio_opts, key=f"r_{menu}")
+    with c2: 
+        pixel_res = st.selectbox("🗜️ 像素精度", pixel_opts, key=f"px_{menu}")
+    with c3: 
+        quality = st.selectbox("💎 图片质量", quality_opts, key=f"q_{menu}")
+
+    custom_size = ""
+    if pixel_res == "自定义":
+        custom_size = st.text_input("输入自定义像素 (例如: 2560x1440)", key=f"c_{menu}")
     
     if st.button("✨ 立即生成", type="primary", use_container_width=True):
         if card_info['final_points'] < 600: st.error("❌ 积分不足")
@@ -433,11 +417,40 @@ with col_main:
         else:
             with st.spinner("🚀 打包云端数据..."):
                 try:
-                    final_ratio = custom_size if (menu == "✍️ 文生图" and aspect_ratio == "自定义像素") else (aspect_ratio if menu == "✍️ 文生图" else "auto")
+                    # 🌟 智能分辨率计算引擎 (根据比例和精度计算出 WxH 给 API)
+                    final_ratio = "auto"
+                    if menu == "✍️ 文生图":
+                        if pixel_res == "自定义" and custom_size:
+                            final_ratio = custom_size
+                        elif pixel_res == "默认":
+                            final_ratio = aspect_ratio
+                        else:
+                            # 预设基准分辨率的最大边界值
+                            res_map = {"1k": 1024, "2k": 2048, "4k": 4096, "6k": 6144}
+                            max_dim = res_map.get(pixel_res, 1024)
+                            
+                            if aspect_ratio == "auto":
+                                final_ratio = f"{max_dim}x{max_dim}"
+                            else:
+                                try:
+                                    w_r, h_r = map(int, aspect_ratio.split(":"))
+                                    # 根据比例计算准确的 WxH 字符串
+                                    if w_r >= h_r:
+                                        w = max_dim
+                                        h = int(max_dim * (h_r / w_r))
+                                    else:
+                                        h = max_dim
+                                        w = int(max_dim * (w_r / h_r))
+                                    final_ratio = f"{w}x{h}"
+                                except:
+                                    final_ratio = aspect_ratio
+                    
                     payload = {"model": selected_model, "prompt": prompt_txt, "webHook": "-1", "shutProgress": True, "aspectRatio": final_ratio, "quality": quality if menu == "✍️ 文生图" else "auto"}
+                    
                     if menu == "🖼️ 图生图":
                         if not uploaded_files: st.error("⚠️ 请先上传参考图"); st.stop()
                         payload["urls"] = uploaded_b64_urls 
+                    
                     headers = {"Authorization": f"Bearer {GRSAI_API_KEY}", "Content-Type": "application/json"}
                     response = requests.post("https://grsai.dakka.com.cn/v1/draw/completions", headers=headers, json=payload, verify=False, timeout=30)
                     
@@ -506,21 +519,153 @@ with col_history:
                     src_urls = item.get('src_urls', []) 
                     
                     for i, url in enumerate(urls):
-                        # 直接使用最稳定的原生缩略图展示
-                        st.image(url, use_container_width=True)
+                        modal_id = f"cb_{str(item['task_id']).replace('-','')}_{i}"
                         
-                        # 🌟 无论是看单图，还是双图对比，统一使用极其稳定的沙盒弹窗！
+                        html_str = (
+                            f'<div style="position:relative; margin-bottom:10px;">'
+                            f'<label for="{modal_id}" style="display:block; cursor:zoom-in;">'
+                            f'<img src="{url}" class="my-thumb">'
+                            f'<div style="text-align:center;font-size:11px;color:#aaa;margin-top:4px;">图 {i+1} (点击查看)</div>'
+                            f'</label>'
+                            f'<input type="checkbox" id="{modal_id}" class="my-cb">'
+                            f'<div class="my-overlay">'
+                            f'<label for="{modal_id}" class="my-bg"></label>'
+                            f'<div style="position:absolute; top:20px; color:#fff; background:rgba(0,0,0,0.6); padding:6px 16px; border-radius:20px; font-size:13px; pointer-events:none; z-index:20;">💡 点击图片 或 滚动滚轮 均可缩放，按住拖拽</div>'
+                            f'<img src="{url}" class="my-modal-img" draggable="false">'
+                            f'</div>'
+                            f'</div>'
+                        )
+                        st.markdown(html_str, unsafe_allow_html=True)
+                        
                         if src_urls and i < len(src_urls):
-                            btn_cols = st.columns(2)
-                            with btn_cols[0]:
-                                if st.button("🔍 放大单图", key=f"btn_single_{item['task_id']}_{i}", use_container_width=True):
-                                    show_viewer_dialog(url) # 传一个参数，自动变成高级单图模式
-                            with btn_cols[1]:
-                                if st.button("🪟 左右对比", key=f"btn_comp_{item['task_id']}_{i}", use_container_width=True):
-                                    show_viewer_dialog(url, src_urls[i]) # 传两个参数，自动变成高级双图模式
-                        else:
-                            if st.button("🔍 放大查看细节", key=f"btn_single_{item['task_id']}_{i}", use_container_width=True):
-                                show_viewer_dialog(url) # 文生图：仅显示高级单图模式
+                            if st.button("🪟 开启高级对比 (原图 vs 成品)", key=f"btn_comp_{item['task_id']}_{i}", use_container_width=True):
+                                show_viewer_dialog(src_urls[i], url)
                             
                 elif item['status'] == 'failed': st.error(f"❌ 失败/未通过审查")
                 st.divider()
+
+# ==========================================
+# 6. 单图双模放大计算引擎 (支持点击放大+滚轮)
+# ==========================================
+components.html("""
+<script>
+    const parentDoc = window.parent.document;
+    if (!parentDoc.getElementById('global-single-zoom-v2')) {
+        const marker = parentDoc.createElement('div');
+        marker.id = 'global-single-zoom-v2';
+        parentDoc.body.appendChild(marker);
+
+        let isDragging = false;
+        let hasMoved = false; 
+        let startX, startY;
+        let activeImg = null;
+
+        const updateImg = (img, scale, tx, ty, animate) => {
+            img.setAttribute('data-scale', scale);
+            img.setAttribute('data-tx', tx);
+            img.setAttribute('data-ty', ty);
+            img.style.transformOrigin = '0 0';
+            img.style.transition = animate ? 'transform 0.2s ease-out' : 'none';
+            img.style.transform = `translate(${tx}px, ${ty}px) scale(${scale})`;
+            img.style.cursor = scale > 1 ? (isDragging ? 'grabbing' : 'grab') : 'zoom-in';
+        };
+
+        parentDoc.addEventListener('wheel', function(e) {
+            if (window.innerWidth <= 768) return; 
+            const img = e.target;
+            if (img.tagName === 'IMG' && img.classList.contains('my-modal-img')) {
+                e.preventDefault();
+                let scale = parseFloat(img.getAttribute('data-scale')) || 1;
+                let tx = parseFloat(img.getAttribute('data-tx')) || 0;
+                let ty = parseFloat(img.getAttribute('data-ty')) || 0;
+                
+                const rect = img.getBoundingClientRect();
+                const mouseX = e.clientX - rect.left;
+                const mouseY = e.clientY - rect.top;
+                const xs = mouseX / scale;
+                const ys = mouseY / scale;
+
+                const delta = e.deltaY > 0 ? 0.85 : 1.15; 
+                let newScale = scale * delta;
+                
+                if (newScale <= 1) { newScale = 1; tx = 0; ty = 0; }
+                else if (newScale > 20) newScale = 20;
+                else {
+                    tx += xs * (scale - newScale);
+                    ty += ys * (scale - newScale);
+                }
+                updateImg(img, newScale, tx, ty, false); 
+            }
+        }, {passive: false});
+
+        parentDoc.addEventListener('mousedown', (e) => {
+            if (window.innerWidth <= 768) return; 
+            const img = e.target;
+            if (img.tagName === 'IMG' && img.classList.contains('my-modal-img')) {
+                e.preventDefault();
+                let scale = parseFloat(img.getAttribute('data-scale')) || 1;
+                isDragging = true;
+                hasMoved = false; 
+                activeImg = img;
+                startX = e.clientX - (parseFloat(img.getAttribute('data-tx')) || 0);
+                startY = e.clientY - (parseFloat(img.getAttribute('data-ty')) || 0);
+                
+                if (scale > 1) {
+                    img.style.cursor = 'grabbing';
+                    img.style.transition = 'none';
+                }
+            }
+        });
+
+        parentDoc.addEventListener('mousemove', (e) => {
+            if (!isDragging || !activeImg) return;
+            hasMoved = true; 
+            let scale = parseFloat(activeImg.getAttribute('data-scale')) || 1;
+            if (scale > 1) {
+                let tx = e.clientX - startX;
+                let ty = e.clientY - startY;
+                updateImg(activeImg, scale, tx, ty, false);
+            }
+        });
+
+        const stopDrag = (e) => {
+            if (isDragging && activeImg) {
+                isDragging = false;
+                let img = activeImg;
+                activeImg = null;
+                
+                if (!hasMoved) {
+                    let scale = parseFloat(img.getAttribute('data-scale')) || 1;
+                    if (scale === 1) {
+                        let newScale = 2.5;
+                        const rect = img.getBoundingClientRect();
+                        const mouseX = e.clientX - rect.left;
+                        const mouseY = e.clientY - rect.top;
+                        
+                        let tx = mouseX - mouseX * newScale;
+                        let ty = mouseY - mouseY * newScale;
+                        
+                        updateImg(img, newScale, tx, ty, true); 
+                    } else {
+                        updateImg(img, 1, 0, 0, true);
+                    }
+                } else {
+                    let scale = parseFloat(img.getAttribute('data-scale')) || 1;
+                    img.style.cursor = scale > 1 ? 'grab' : 'zoom-in';
+                }
+            }
+        };
+
+        parentDoc.addEventListener('mouseup', stopDrag);
+        parentDoc.addEventListener('mouseleave', stopDrag);
+
+        parentDoc.addEventListener('click', function(e) {
+            if (e.target.classList.contains('my-bg')) {
+                parentDoc.querySelectorAll('.my-modal-img').forEach(img => {
+                    updateImg(img, 1, 0, 0, false);
+                });
+            }
+        });
+    }
+</script>
+""", height=0, width=0)
