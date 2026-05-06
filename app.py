@@ -23,7 +23,7 @@ warnings.filterwarnings("ignore", message=".*st.components.v1.html.*")
 # ==========================================
 # 0. 网页基础配置与全局 CSS
 # ==========================================
-st.set_page_config(page_title="AI Pro Studio V6.69", page_icon="🚀", layout="wide", initial_sidebar_state="auto")
+st.set_page_config(page_title="AI Pro Studio V6.70", page_icon="🚀", layout="wide", initial_sidebar_state="auto")
 
 st.markdown("""
 <style>
@@ -31,54 +31,43 @@ st.markdown("""
     .stButton > button { border-radius: 8px; font-weight: bold; transition: all 0.3s; }
     button[title="View fullscreen"] { display: none !important; }
     
-    /* 🌟 核心：透明点击层技术 */
-    .img-click-wrapper {
-        position: relative;
-        width: 100%;
-        margin-bottom: 15px;
-        cursor: zoom-in;
+    /* 🌟 核心：将按钮样式重塑为图片容器 */
+    .stButton.image-action-btn > button {
+        width: 100% !important;
+        height: auto !important;
+        min-height: 200px !important;
+        background-color: #111 !important;
+        background-repeat: no-repeat !important;
+        background-size: contain !important;
+        background-position: center !important;
+        border: 1px solid #333 !important;
+        margin-bottom: 20px !important;
+        transition: 0.3s !important;
+        display: flex !important;
+        align-items: flex-end !important;
+        justify-content: center !important;
+        color: rgba(0,255,213,0.8) !important;
+        font-size: 11px !important;
+        padding-bottom: 10px !important;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.3) !important;
     }
-    .img-click-wrapper img {
-        width: 100%;
-        border-radius: 12px;
-        border: 1px solid #333;
-        display: block;
-        transition: 0.2s;
+    .stButton.image-action-btn > button:hover {
+        border-color: #00ffd5 !important;
+        box-shadow: 0 6px 20px rgba(0,255,213,0.2) !important;
+        transform: translateY(-2px);
     }
-    .img-click-wrapper:hover img {
-        border-color: #00ffd5;
-        box-shadow: 0 4px 15px rgba(0,255,213,0.3);
-        transform: scale(1.01);
-    }
-    .click-overlay-hint {
-        position: absolute;
-        bottom: 8px;
-        left: 50%;
-        transform: translateX(-50%);
+    .stButton.image-action-btn > button p { display: none; } /* 隐藏原生文字 */
+    .stButton.image-action-btn > button::after {
+        content: "🔍 点击查看大图细节";
         background: rgba(0,0,0,0.6);
-        color: #00ffd5;
-        font-size: 11px;
-        padding: 2px 12px;
-        border-radius: 10px;
-        pointer-events: none;
-    }
-    /* 强行让 Streamlit 按钮变透明并填满父容器 */
-    div[data-testid="stButton"].invisible-btn > button {
-        position: absolute !important;
-        top: 0 !important; left: 0 !important;
-        width: 100% !important; height: 100% !important;
-        background: transparent !important;
-        border: none !important;
-        color: transparent !important;
-        z-index: 10 !important;
-        margin: 0 !important;
-        padding: 0 !important;
+        padding: 4px 12px;
+        border-radius: 20px;
     }
 </style>
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 1. 数据库与工具函数
+# 1. 数据库与核心工具函数
 # ==========================================
 MODEL_COSTS = {"gpt-image-2": 600, "gpt-image-2-vip": 900}
 ratio_opts = ["auto", "1:1", "3:2", "2:3", "16:9", "9:16", "5:4", "4:5", "4:3", "3:4", "21:9", "9:21", "1:3", "3:1", "2:1", "1:2"]
@@ -146,9 +135,9 @@ def deduct_balance(card_key, amount):
     try:
         res = supabase.table("user_cards").select("used_points, final_points").eq("card_key", card_key).execute()
         if res.data:
-            new_used = res.data[0]['used_points'] + amount
-            new_final = res.data[0]['final_points'] - amount
-            supabase.table("user_cards").update({"used_points": new_used, "final_points": new_final}).eq("card_key", card_key).execute()
+            new_pts = res.data[0]['used_points'] + amount
+            new_fin = res.data[0]['final_points'] - amount
+            supabase.table("user_cards").update({"used_points": new_pts, "final_points": new_fin}).eq("card_key", card_key).execute()
     except: pass
 
 def parse_api_response(text):
@@ -162,7 +151,7 @@ def parse_api_response(text):
     return None
 
 # ==========================================
-# 2. 独立查阅引擎 (iframe 隔离版)
+# 2. 查阅引擎 (iframe 隔离版)
 # ==========================================
 @st.dialog("🔍 高级细节查阅台", width="large")
 def show_viewer_dialog(after_url, before_url=None):
@@ -188,46 +177,21 @@ def show_viewer_dialog(after_url, before_url=None):
         </div>
         <div class="viewer" id="container">{panels_html}</div>
         <script>
-            let scale = 1, px = 0, py = 0, start = {{x:0,y:0}}, isPanning = false, moved = false;
-            const container = document.getElementById('container'), imgs = document.querySelectorAll('.sync-img');
-            function update(anim = false) {{
-                imgs.forEach(i => {{
-                    i.style.transition = anim ? 'transform 0.2s' : 'none';
-                    i.style.transform = `translate(${{px}}px, ${{py}}px) scale(${{scale}})`;
-                    i.style.cursor = scale > 1 ? (isPanning ? 'grabbing' : 'grab') : 'zoom-in';
-                }});
-            }}
-            container.onmousedown = (e) => {{ if(e.target.tagName!='IMG') return; e.preventDefault(); start={{x:e.clientX-px, y:e.clientY-py}}; isPanning=true; moved=false; update(); }};
-            window.onmousemove = (e) => {{ if(!isPanning) return; moved=true; px=e.clientX-start.x; py=e.clientY-start.y; update(); }};
-            window.onmouseup = (e) => {{
-                if(!isPanning) return; isPanning=false;
-                if(!moved) {{
-                    const rect = e.target.getBoundingClientRect();
-                    const mx = (e.clientX - rect.left)/scale, my = (e.clientY - rect.top)/scale;
-                    if(scale==1) {{ scale=2.5; px += mx*(1-scale); py += my*(1-scale); }} else {{ scale=1; px=0; py=0; }}
-                    update(true);
-                }} else update();
-            }};
-            container.onwheel = (e) => {{
-                e.preventDefault(); const rect = imgs[0].getBoundingClientRect();
-                const mx = (e.clientX-rect.left)/scale, my = (e.clientY-rect.top)/scale;
-                let ns = scale * (e.deltaY > 0 ? 0.85 : 1.15);
-                if(ns<=1) {{ scale=1; px=0; py=0; }} else if(ns<20) {{ px += mx*(scale-ns); py += my*(scale-ns); scale=ns; }}
-                update();
-            }};
-            function zoomBtn(f) {{
-                const cx = container.clientWidth/2, cy = container.clientHeight/2;
-                const mx = (cx-px)/scale, my = (cy-py)/scale;
-                let ns = scale * f; if(ns<1) {{ resetView(); return; }}
-                px += mx*(scale-ns); py += my*(scale-ns); scale=ns; update(true);
-            }}
-            function resetView() {{ scale=1; px=0; py=0; update(true); }}
+            let s = 1, x = 0, y = 0, start={{x:0,y:0}}, pan=false, mov=false;
+            const cnt=document.getElementById('container'), imgs=document.querySelectorAll('.sync-img');
+            function upd(a=false){{ imgs.forEach(i=>{{ i.style.transition=a?'transform 0.2s':'none'; i.style.transform=`translate(${{x}}px,${{y}}px) scale(${{s}})`; i.style.cursor=s>1?(pan?'grabbing':'grab'):'zoom-in'; }}); }}
+            cnt.onmousedown=(e)=>{{ if(e.target.tagName!='IMG')return; e.preventDefault(); start={{x:e.clientX-x,y:e.clientY-y}}; pan=true; mov=false; upd(); }};
+            window.onmousemove=(e)=>{{ if(!pan)return; mov=true; x=e.clientX-start.x; y=e.clientY-start.y; upd(); }};
+            window.onmouseup=(e)=>{{ if(!pan)return; pan=false; if(!mov){{ const r=e.target.getBoundingClientRect(); const mx=(e.clientX-r.left)/s,my=(e.clientY-r.top)/s; if(s==1){{s=2.5;x+=mx*(1-s);y+=my*(1-s);}}else{{s=1;x=0;y=0;}} upd(true); }}else upd(); }};
+            cnt.onwheel=(e)=>{{ e.preventDefault(); const r=imgs[0].getBoundingClientRect(); const mx=(e.clientX-r.left)/s,my=(e.clientY-r.top)/s; let ns=s*(e.deltaY>0?0.85:1.15); if(ns<=1){{s=1;x=0;y=0;}}else if(ns<20){{x+=mx*(s-ns);y+=my*(s-ns);s=ns;}} upd(); }};
+            function zoomBtn(f){{ const cx=cnt.clientWidth/2,cy=cnt.clientHeight/2,mx=(cx-x)/s,my=(cy-y)/s,ns=s*f; if(ns<1){{resetView();return;}} x+=mx*(s-ns);y+=my*(s-ns);s=ns; upd(true); }}
+            function resetView(){{ s=1;x=0;y=0; upd(true); }}
         </script></body></html>
     """
     components.html(html_code, height=750, scrolling=False)
 
 # ==========================================
-# 3. 登录与主程序
+# 3. 登录逻辑
 # ==========================================
 query_key = st.query_params.get("key", "")
 card_info = get_card_info(query_key) if query_key else None
@@ -246,11 +210,11 @@ GRSAI_API_KEY = st.secrets.get((card_info.get('api_secret_name') or "API_VIP888"
 
 # 自动轮询
 def auto_poll_task(task_id, active_user_key, model_used, start_time, src_urls=None):
-    placeholder = st.empty()
+    ph = st.empty()
     headers = {"Authorization": f"Bearer {GRSAI_API_KEY}", "Content-Type": "application/json"}
     for i in range(300):
         p = min(5 + int((time.time() - start_time) * 0.2), 98) 
-        placeholder.markdown(f'<div style="background:#111;border-radius:10px;padding:4px;border:1px solid #333;"><div style="height:12px;border-radius:6px;background:linear-gradient(90deg,#00c2ff,#00ffd5);width:{p}%;"></div></div><div style="text-align:right;color:#00ffd5;font-size:12px;margin-top:4px;">⚡ 任务执行中... {p}%</div>', unsafe_allow_html=True)
+        ph.markdown(f'<div style="background:#111;border-radius:10px;padding:4px;border:1px solid #333;"><div style="height:12px;border-radius:6px;background:linear-gradient(90deg,#00c2ff,#00ffd5);width:{p}%;"></div></div><div style="text-align:right;color:#00ffd5;font-size:12px;margin-top:4px;">⚡ 任务执行中... {p}%</div>', unsafe_allow_html=True)
         try:
             resp = requests.post("https://grsai.dakka.com.cn/v1/draw/result", headers=headers, json={"id": task_id}, verify=False, timeout=10)
             q_res = parse_api_response(resp.text)
@@ -258,7 +222,6 @@ def auto_poll_task(task_id, active_user_key, model_used, start_time, src_urls=No
                 status = str(q_res.get("status", "")).lower()
                 if "data" in q_res: status = str(q_res["data"].get("status", "")).lower()
                 if str(q_res.get("code", "0")) != "0" and status not in ["running", "in_progress"]: status = "failed"
-                
                 if status in ["succeeded", "success"]:
                     deduct_balance(active_user_key, MODEL_COSTS.get(model_used, 600)); st.rerun(); return 
                 elif status in ["failed", "fail", "error"]:
@@ -266,13 +229,14 @@ def auto_poll_task(task_id, active_user_key, model_used, start_time, src_urls=No
         except: pass
         time.sleep(3)
 
-# 侧边栏
+# ==========================================
+# 4. 主界面与侧边栏
+# ==========================================
 st.sidebar.markdown(f'### 👤 用户中心\n`{user_key}`')
 st.sidebar.markdown(f'<div style="background:#1e1e1e;padding:15px;border-radius:12px;border:1px solid #333;"><div style="color:#888;font-size:13px;">获取总额: {card_info.get("total_points",0)}</div><div style="color:#ff4b4b;font-size:13px;">累计消耗: -{card_info.get("used_points",0)}</div><hr style="margin:10px 0;border-color:#444;"><div style="color:#00ffd5;font-size:28px;font-weight:bold;">{card_info.get("final_points",0)}</div></div>', unsafe_allow_html=True)
 if st.sidebar.button("🚪 退出登录", use_container_width=True): st.query_params.clear(); st.rerun()
 menu = st.sidebar.radio("功能导航", ["✍️ 文生图", "🖼️ 图生图"])
 
-# 主界面
 st.title("🚀 AI Pro Studio")
 col_main, col_history = st.columns([7, 3])
 
@@ -280,11 +244,10 @@ with col_main:
     selected_model = st.selectbox("🤖 模型选择", ["gpt-image-2", "gpt-image-2-vip"])
     if "current_prompt" not in st.session_state: st.session_state.current_prompt = ""
     all_temps = fetch_templates(user_key)
-    shortcuts = [t for t in all_temps if t['is_shortcut']]
-    if shortcuts:
+    if [t for t in all_temps if t['is_shortcut']]:
         st.caption("✨ 快捷描述词模板")
-        s_cols = st.columns(min(len(shortcuts), 5))
-        for i, s_item in enumerate(shortcuts):
+        s_cols = st.columns(5)
+        for i, s_item in enumerate([t for t in all_temps if t['is_shortcut']]):
             if s_cols[i % 5].button(f"📌 {s_item['name']}", key=f"s_{s_item['id']}", use_container_width=True):
                 st.session_state.current_prompt = s_item['content']; st.rerun()
 
@@ -326,10 +289,8 @@ with col_main:
                                 h = 1024 * m if w_r > h_r else 1792 * m
                                 if w_r == h_r: w, h = 1024*m, 1024*m
                                 final_ratio = f"{int(w)}x{int(h)}"
-                    
                     payload = {"model": selected_model, "prompt": prompt_txt, "webHook": "-1", "shutProgress": True, "aspectRatio": final_ratio, "quality": quality if menu == "✍️ 文生图" else "auto"}
                     if menu == "🖼️ 图生图": payload["urls"] = uploaded_b64_urls 
-                    
                     resp = requests.post("https://grsai.dakka.com.cn/v1/draw/completions", headers={"Authorization": f"Bearer {GRSAI_API_KEY}", "Content-Type": "application/json"}, json=payload, verify=False, timeout=30)
                     if resp.status_code == 200:
                         api_res = parse_api_response(resp.text)
@@ -337,13 +298,12 @@ with col_main:
                         if tid:
                             sync_task_to_db({"task_id": tid, "timestamp": time.time(), "time_str": datetime.now(BJ_TZ).strftime("%H:%M"), "prompt": prompt_txt, "status": "running", "urls": [], "model": selected_model, "src_urls": uploaded_b64_urls if menu=="🖼️ 图生图" else None}, user_key)
                             st.rerun() 
-                except Exception as e: st.error(f"💥 提交错误: {str(e)}")
+                except: st.error("💥 提交任务失败")
 
 with col_history:
     st.markdown("### 🗂️ 创作记录")
     if st.button("🗑️ 清空历史", use_container_width=True):
         if clear_history_db(user_key): st.rerun()
-    
     tasks = fetch_tasks_from_db(user_key)
     if not tasks: st.info("暂无记录")
     else:
@@ -353,17 +313,15 @@ with col_history:
                 if item['status'] == 'running':
                     auto_poll_task(item['task_id'], user_key, item.get('model','gpt-image-2'), item['timestamp'], item.get('src_urls'))
                 elif item['status'] == 'succeeded':
-                    urls = item.get('urls', [])
-                    srcs = item.get('src_urls', [])
-                    for i, url in enumerate(urls):
-                        # 🌟 重点：图片感应区域
-                        st.markdown(f'<div class="img-click-wrapper"><img src="{url}"><div class="click-overlay-hint">🔍 点击图片查看大图细节{" (同步对比)" if srcs else ""}</div>', unsafe_allow_html=True)
-                        # 放置透明按钮
-                        btn_k = f"btn_inv_{item['task_id']}_{i}"
-                        st.markdown('<div class="invisible-btn">', unsafe_allow_html=True)
+                    for i, url in enumerate(item.get('urls', [])):
+                        # 🌟 绝技：注入局部 CSS 动态设置按钮背景图片
+                        btn_k = f"btn_img_{item['task_id']}_{i}"
+                        st.markdown(f'<style>button[key="{btn_k}"] {{ background-image: url("{url}") !important; }}</style>', unsafe_allow_html=True)
+                        st.markdown('<div class="image-action-btn">', unsafe_allow_html=True)
                         if st.button(" ", key=btn_k):
+                            srcs = item.get('src_urls', [])
                             if srcs and i < len(srcs): show_viewer_dialog(url, srcs[i])
                             else: show_viewer_dialog(url)
-                        st.markdown('</div></div>', unsafe_allow_html=True)
+                        st.markdown('</div>', unsafe_allow_html=True)
                 elif item['status'] == 'failed': st.error("❌ 任务失败")
                 st.divider()
