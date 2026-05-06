@@ -23,16 +23,58 @@ warnings.filterwarnings("ignore", message=".*st.components.v1.html.*")
 # ==========================================
 # 0. 网页基础配置与全局 CSS
 # ==========================================
-st.set_page_config(page_title="AI Pro Studio V6.67", page_icon="🚀", layout="wide", initial_sidebar_state="auto")
+st.set_page_config(page_title="AI Pro Studio V6.68", page_icon="🚀", layout="wide", initial_sidebar_state="auto")
 
+# 🌟 核心 CSS：让按钮变透明并覆盖在图片上
 st.markdown("""
 <style>
     [data-testid="stVerticalBlock"] { overflow-x: hidden !important; }
     .stButton > button { border-radius: 8px; font-weight: bold; transition: all 0.3s; }
-    .stButton > button:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
     button[title="View fullscreen"] { display: none !important; }
     
-    .thumb-img { border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,0.1); width: 100%; margin-bottom: 8px; }
+    /* 隐形按钮容器 */
+    .img-container {
+        position: relative;
+        width: 100%;
+        margin-bottom: 20px;
+        border-radius: 12px;
+        overflow: hidden;
+        border: 1px solid #333;
+        transition: transform 0.2s;
+    }
+    .img-container:hover {
+        transform: scale(1.02);
+        box-shadow: 0 4px 15px rgba(0,255,213,0.2);
+        border-color: #00ffd5;
+    }
+    
+    /* 强制让 Streamlit 按钮覆盖整个容器并透明 */
+    .stButton.overlay-btn button {
+        position: absolute !important;
+        top: 0 !important;
+        left: 0 !important;
+        width: 100% !important;
+        height: 100% !important;
+        background-color: transparent !important;
+        border: none !important;
+        color: transparent !important;
+        z-index: 10 !important;
+        cursor: zoom-in !important;
+    }
+    
+    /* 底部提示签 */
+    .click-hint {
+        position: absolute;
+        bottom: 0;
+        width: 100%;
+        background: rgba(0,0,0,0.6);
+        color: #00ffd5;
+        text-align: center;
+        font-size: 11px;
+        padding: 4px 0;
+        pointer-events: none;
+        z-index: 5;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -72,11 +114,7 @@ def sync_task_to_db(task_data, card_key):
     try:
         task_data["card_key"] = card_key
         supabase.table("tasks").upsert(task_data, on_conflict="task_id").execute()
-        all_res = supabase.table("tasks").select("id").eq("card_key", card_key).order("timestamp", desc=True).execute()
-        if len(all_res.data) > 30:
-            old_ids = [r['id'] for r in all_res.data[30:]]
-            supabase.table("tasks").delete().in_("id", old_ids).execute()
-    except Exception as e: print(e)
+    except: pass
 
 def clear_history_db(card_key):
     try:
@@ -129,7 +167,7 @@ def parse_api_response(text):
     return None
 
 # ==========================================
-# 2. 核心：独立沙盒查阅引擎 (解决按钮没反应的问题)
+# 2. 独立沙盒查阅引擎 (iframe 隔离，100% 稳定)
 # ==========================================
 @st.dialog("🔍 图像细节查阅台", width="large")
 def show_viewer_dialog(after_url, before_url=None):
@@ -158,17 +196,16 @@ def show_viewer_dialog(after_url, before_url=None):
     </head>
     <body>
         <div class="toolbar">
-            <span style="font-size: 14px; color: #ccc;">💡 <b>点击图片</b>一键放大，<b>滚动轮</b>无极缩放，按住可随意拖拽。</span>
+            <span style="font-size: 14px; color: #ccc;">💡 <b>点击图片</b>放大，<b>滚动鼠标滚轮</b>无极缩放，按住可平移。</span>
             <div class="btn-group">
                 <button class="btn" onclick="zoomBtn(1.3)">➕ 放大</button>
                 <button class="btn" onclick="zoomBtn(0.7)">➖ 缩小</button>
-                <button class="btn" onclick="resetView()" style="background: #444; color: white;">🔄 还原</button>
+                <button class="btn" onclick="resetView()" style="background: #444; color: white;">🔄 1:1 还原</button>
             </div>
         </div>
         <div class="viewer" id="container">
             {panels_html}
         </div>
-
         <script>
             let scale = 1; let pointX = 0, pointY = 0; let start = {{ x: 0, y: 0 }}; 
             let isPanning = false; let hasMoved = false;
@@ -235,17 +272,13 @@ def show_viewer_dialog(after_url, before_url=None):
             }};
 
             function zoomBtn(factor) {{
-                const cx = container.clientWidth / 2;
-                const cy = container.clientHeight / 2;
-                const xs = (cx - pointX) / scale;
-                const ys = (cy - pointY) / scale;
+                const cx = container.clientWidth / 2; const cy = container.clientHeight / 2;
+                const xs = (cx - pointX) / scale; const ys = (cy - pointY) / scale;
                 let newScale = scale * factor;
                 if (newScale < 1) {{ resetView(); return; }}
                 if (newScale > 20) newScale = 20;
-                pointX += xs * (scale - newScale);
-                pointY += ys * (scale - newScale);
-                scale = newScale;
-                setTransform(true);
+                pointX += xs * (scale - newScale); pointY += ys * (scale - newScale);
+                scale = newScale; setTransform(true);
             }}
 
             function resetView() {{ scale = 1; pointX = 0; pointY = 0; setTransform(true); }}
@@ -256,7 +289,7 @@ def show_viewer_dialog(after_url, before_url=None):
     components.html(html_code, height=750, scrolling=False)
 
 # ==========================================
-# 3. 身份验证与登录
+# 3. 登录与验证
 # ==========================================
 query_key = st.query_params.get("key", "")
 card_info = get_card_info(query_key) if query_key else None
@@ -283,7 +316,7 @@ clean_api_name = (card_info.get('api_secret_name') or "API_VIP888").strip("'").s
 GRSAI_API_KEY = st.secrets.get(clean_api_name, "")
 
 # ==========================================
-# 4. 自动轮询 
+# 4. 自动轮询
 # ==========================================
 def auto_poll_task(task_id, active_user_key, model_used, start_time, src_urls=None):
     placeholder = st.empty()
@@ -302,14 +335,13 @@ def auto_poll_task(task_id, active_user_key, model_used, start_time, src_urls=No
                     status = str(q_res["data"].get("status", "")).lower()
                 if str(q_res.get("code", "0")) != "0" and status not in ["running", "in_progress", "submitted"]:
                     status = "failed"
-
                 if status in ["succeeded", "success"]:
                     deduct_balance(active_user_key, MODEL_COSTS.get(model_used, 600))
                     st.rerun(); return 
                 elif status in ["failed", "fail", "error"]:
                     sync_task_to_db({"task_id": task_id, "status": "failed"}, active_user_key)
                     st.rerun(); return
-        except Exception as e: pass
+        except: pass
         time.sleep(3)
 
 # ==========================================
@@ -388,7 +420,7 @@ with col_main:
                                 w = 1792 * m if w_r > h_r else 1024 * m
                                 h = 1024 * m if w_r > h_r else 1792 * m
                                 if w_r == h_r: w, h = 1024*m, 1024*m
-                                final_ratio = f"{w}x{h}"
+                                final_ratio = f"{int(w)}x{int(h)}"
                     
                     payload = {"model": selected_model, "prompt": prompt_txt, "webHook": "-1", "shutProgress": True, "aspectRatio": final_ratio, "quality": quality if menu == "✍️ 文生图" else "auto"}
                     if menu == "🖼️ 图生图": payload["urls"] = uploaded_b64_urls 
@@ -438,13 +470,22 @@ with col_history:
                     urls = item.get('urls', [])
                     srcs = item.get('src_urls', [])
                     for i, url in enumerate(urls):
-                        st.image(url, use_container_width=True)
-                        b1, b2 = st.columns(2)
-                        # 🌟 统一使用 st.dialog 查阅台，确保缩放按钮 100% 有效
-                        if b1.button("🔍 细节放大", key=f"z_{item['task_id']}_{i}", use_container_width=True):
-                            show_viewer_dialog(url)
-                        if srcs and i < len(srcs):
-                            if b2.button("🪟 同步对比", key=f"c_{item['task_id']}_{i}", use_container_width=True):
+                        # 🌟 重点：隐形按钮魔法
+                        st.markdown(f'''
+                        <div class="img-container">
+                            <img src="{url}" style="width:100%; display:block;">
+                            <div class="click-hint">🔍 点击查看大图细节{" (对比模式)" if srcs else ""}</div>
+                        </div>
+                        ''', unsafe_allow_html=True)
+                        
+                        # 覆盖一个完全透明的按钮
+                        btn_key = f"img_click_{item['task_id']}_{i}"
+                        st.markdown(f'<div class="overlay-btn">', unsafe_allow_html=True)
+                        if st.button(" ", key=btn_key):
+                            if srcs and i < len(srcs):
                                 show_viewer_dialog(url, srcs[i])
-                elif item['status'] == 'failed': st.error("❌ 尺寸错误或生成失败")
+                            else:
+                                show_viewer_dialog(url)
+                        st.markdown('</div>', unsafe_allow_html=True)
+                elif item['status'] == 'failed': st.error("❌ 任务失败")
                 st.divider()
