@@ -23,7 +23,7 @@ warnings.filterwarnings("ignore", message=".*st.components.v1.html.*")
 # ==========================================
 # 0. 网页基础配置与全局 CSS
 # ==========================================
-st.set_page_config(page_title="AI Pro Studio V6.63", page_icon="🚀", layout="wide", initial_sidebar_state="auto")
+st.set_page_config(page_title="AI Pro Studio V6.64", page_icon="🚀", layout="wide", initial_sidebar_state="auto")
 
 st.markdown("""
 <style>
@@ -38,7 +38,7 @@ st.markdown("""
     .my-overlay { display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.92); z-index: 999999; align-items: center; justify-content: center; overflow: hidden; }
     .my-cb:checked ~ .my-overlay { display: flex !important; }
     .my-bg { position: absolute; top:0; left:0; width:100%; height:100%; cursor: zoom-out; z-index: 1; }
-    .my-modal-img { position: relative; z-index: 10; max-width: 90vw; max-height: 90vh; border-radius: 8px; box-shadow: 0 0 50px rgba(0,0,0,0.8); object-fit: contain; transform-origin: 0 0; will-change: transform; cursor: zoom-in; }
+    .my-modal-img { position: relative; z-index: 10; max-width: 90vw; max-height: 90vh; border-radius: 8px; box-shadow: 0 0 50px rgba(0,0,0,0.8); object-fit: contain; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -388,13 +388,16 @@ with col_main:
                         f'<div style="position:relative; margin-bottom:10px;">'
                         f'<label for="{zoom_id}" style="display:block; cursor:zoom-in;">'
                         f'<img src="{data_uri}" class="my-thumb">'
-                        f'<div style="text-align:center;font-size:11px;color:#aaa;margin-top:4px;">图 {i+1} (点击放大)</div>'
+                        f'<div style="text-align:center;font-size:11px;color:#aaa;margin-top:4px;">图 {i+1} (点击查看大图)</div>'
                         f'</label>'
                         f'<input type="checkbox" id="{zoom_id}" class="my-cb">'
                         f'<div class="my-overlay">'
                         f'<label for="{zoom_id}" class="my-bg"></label>'
-                        f'<div style="position:absolute; top:20px; color:#fff; background:rgba(0,0,0,0.6); padding:6px 16px; border-radius:20px; font-size:13px; pointer-events:none; z-index:20;">💡 点击图片 或 滚动滚轮 均可缩放，按住拖拽</div>'
-                        f'<img src="{data_uri}" class="my-modal-img" draggable="false">'
+                        f'<div style="position:absolute; top:20px; z-index:20; background:rgba(0,0,0,0.7); padding:8px 20px; border-radius:20px;">'
+                        f'<button class="btn" onclick="modalZoomIn()" style="background:#00ffd5; color:#000; border:none; padding:4px 12px; border-radius:4px; font-weight:bold; cursor:pointer;">➕ 放大</button> '
+                        f'<button class="btn" onclick="modalZoomOut()" style="background:#00ffd5; color:#000; border:none; padding:4px 12px; border-radius:4px; font-weight:bold; cursor:pointer;">➖ 缩小</button>'
+                        f'</div>'
+                        f'<img src="{data_uri}" class="my-modal-img" id="mod_img_{i}" draggable="false">'
                         f'</div>'
                         f'</div>'
                     )
@@ -450,6 +453,10 @@ with col_main:
                                         final_ratio = f"{1792*m}x{1024*m}"
                                     else: 
                                         final_ratio = f"{1024*m}x{1792*m}"
+                                    
+                                    w = int(max(64, round(int(final_ratio.split('x')[0]) / 64) * 64))
+                                    h = int(max(64, round(int(final_ratio.split('x')[1]) / 64) * 64))
+                                    final_ratio = f"{w}x{h}"
                                 except:
                                     final_ratio = aspect_ratio
                     
@@ -538,8 +545,11 @@ with col_history:
                             f'<input type="checkbox" id="{modal_id}" class="my-cb">'
                             f'<div class="my-overlay">'
                             f'<label for="{modal_id}" class="my-bg"></label>'
-                            f'<div style="position:absolute; top:20px; color:#fff; background:rgba(0,0,0,0.6); padding:6px 16px; border-radius:20px; font-size:13px; pointer-events:none; z-index:20;">💡 点击图片 或 滚动滚轮 均可缩放，按住拖拽</div>'
-                            f'<img src="{url}" class="my-modal-img" draggable="false">'
+                            f'<div style="position:absolute; top:20px; z-index:20; background:rgba(0,0,0,0.7); padding:8px 20px; border-radius:20px;">'
+                            f'<button class="btn" id="btn_in_{modal_id}" style="background:#00ffd5; color:#000; border:none; padding:6px 14px; border-radius:4px; font-weight:bold; cursor:pointer; margin-right:6px;" onclick="document.getElementById(\'mod_{modal_id}\').style.transform = \'scale(\' + (parseFloat(document.getElementById(\'mod_{modal_id}\').getAttribute(\'data-scale\') || 1) + 0.3) + \')\'; document.getElementById(\'mod_{modal_id}\').setAttribute(\'data-scale\', parseFloat(document.getElementById(\'mod_{modal_id}\').getAttribute(\'data-scale\') || 1) + 0.3);">➕ 放大</button>'
+                            f'<button class="btn" id="btn_out_{modal_id}" style="background:#00ffd5; color:#000; border:none; padding:6px 14px; border-radius:4px; font-weight:bold; cursor:pointer;" onclick="document.getElementById(\'mod_{modal_id}\').style.transform = \'scale(\' + Math.max(1, parseFloat(document.getElementById(\'mod_{modal_id}\').getAttribute(\'data-scale\') || 1) - 0.3) + \')\'; document.getElementById(\'mod_{modal_id}\').setAttribute(\'data-scale\', Math.max(1, parseFloat(document.getElementById(\'mod_{modal_id}\').getAttribute(\'data-scale\') || 1) - 0.3));">➖ 缩小</button>'
+                            f'</div>'
+                            f'<img src="{url}" class="my-modal-img" id="mod_{modal_id}" draggable="false">'
                             f'</div>'
                             f'</div>'
                         )
@@ -551,147 +561,4 @@ with col_history:
                             
                 elif item['status'] == 'failed': st.error(f"❌ 尺寸被拒绝 或 生成失败")
                 st.divider()
-
-# ==========================================
-# 6. 单图霸体捕获引擎 (彻底穿透框架拦截)
-# ==========================================
-components.html("""
-<script>
-    const parentDoc = window.parent.document;
-    if (!parentDoc.getElementById('global-single-zoom-v3')) {
-        const marker = parentDoc.createElement('div');
-        marker.id = 'global-single-zoom-v3';
-        parentDoc.body.appendChild(marker);
-
-        let isDragging = false;
-        let startClickX = 0, startClickY = 0; 
-        let startX = 0, startY = 0;
-        let activeImg = null;
-
-        const updateImg = (img, scale, tx, ty, animate) => {
-            img.setAttribute('data-scale', scale);
-            img.setAttribute('data-tx', tx);
-            img.setAttribute('data-ty', ty);
-            img.style.transformOrigin = '0 0';
-            img.style.transition = animate ? 'transform 0.2s ease-out' : 'none';
-            img.style.transform = `translate(${tx}px, ${ty}px) scale(${scale})`;
-            img.style.cursor = scale > 1 ? (isDragging ? 'grabbing' : 'grab') : 'zoom-in';
-        };
-
-        // 🌟 1. 霸体级滚轮拦截 (capture: true)
-        parentDoc.addEventListener('wheel', function(e) {
-            if (window.innerWidth <= 768) return; 
-            const overlay = e.target.closest('.my-overlay');
-            if (overlay) {
-                e.preventDefault();
-                e.stopPropagation(); // 阻止框架背景随之滚动
-                const img = overlay.querySelector('.my-modal-img');
-                if (!img) return;
-
-                let scale = parseFloat(img.getAttribute('data-scale')) || 1;
-                let tx = parseFloat(img.getAttribute('data-tx')) || 0;
-                let ty = parseFloat(img.getAttribute('data-ty')) || 0;
-                
-                const rect = img.getBoundingClientRect();
-                const mouseX = e.clientX - rect.left;
-                const mouseY = e.clientY - rect.top;
-                const xs = mouseX / scale;
-                const ys = mouseY / scale;
-
-                const delta = e.deltaY > 0 ? 0.85 : 1.15; 
-                let newScale = scale * delta;
-                
-                if (newScale <= 1) { newScale = 1; tx = 0; ty = 0; }
-                else if (newScale > 20) newScale = 20;
-                else {
-                    tx += xs * (scale - newScale);
-                    ty += ys * (scale - newScale);
-                }
-                updateImg(img, newScale, tx, ty, false); 
-            }
-        }, { capture: true, passive: false });
-
-        // 🌟 2. 霸体级鼠标按下拦截 (记录坐标点防手抖)
-        parentDoc.addEventListener('mousedown', (e) => {
-            if (window.innerWidth <= 768) return; 
-            const img = e.target;
-            if (img.tagName === 'IMG' && img.classList.contains('my-modal-img')) {
-                e.preventDefault();
-                e.stopPropagation();
-                let scale = parseFloat(img.getAttribute('data-scale')) || 1;
-                isDragging = true;
-                activeImg = img;
-                
-                startClickX = e.clientX;
-                startClickY = e.clientY;
-                startX = e.clientX - (parseFloat(img.getAttribute('data-tx')) || 0);
-                startY = e.clientY - (parseFloat(img.getAttribute('data-ty')) || 0);
-                
-                if (scale > 1) {
-                    img.style.cursor = 'grabbing';
-                    img.style.transition = 'none';
-                }
-            }
-        }, { capture: true });
-
-        // 🌟 3. 霸体级鼠标移动拦截
-        parentDoc.addEventListener('mousemove', (e) => {
-            if (!isDragging || !activeImg) return;
-            e.preventDefault();
-            e.stopPropagation();
-            let scale = parseFloat(activeImg.getAttribute('data-scale')) || 1;
-            if (scale > 1) {
-                let tx = e.clientX - startX;
-                let ty = e.clientY - startY;
-                updateImg(activeImg, scale, tx, ty, false);
-            }
-        }, { capture: true });
-
-        // 🌟 4. 霸体级鼠标抬起拦截 (核心：5像素手抖容错算法)
-        const stopDrag = (e) => {
-            if (isDragging && activeImg) {
-                isDragging = false;
-                let img = activeImg;
-                activeImg = null;
-                
-                // 计算鼠标按下到抬起的直线距离
-                let moveDist = Math.hypot(e.clientX - startClickX, e.clientY - startClickY);
-                
-                // 距离小于 5 像素，绝对判定为“点击放大”！
-                if (moveDist < 5) {
-                    let scale = parseFloat(img.getAttribute('data-scale')) || 1;
-                    if (scale === 1) {
-                        let newScale = 2.5;
-                        const rect = img.getBoundingClientRect();
-                        const mouseX = e.clientX - rect.left;
-                        const mouseY = e.clientY - rect.top;
-                        
-                        let tx = mouseX - mouseX * newScale;
-                        let ty = mouseY - mouseY * newScale;
-                        
-                        updateImg(img, newScale, tx, ty, true); 
-                    } else {
-                        updateImg(img, 1, 0, 0, true);
-                    }
-                } else {
-                    // 超过 5 像素，判定为拖拽结束，仅恢复游标
-                    let scale = parseFloat(img.getAttribute('data-scale')) || 1;
-                    img.style.cursor = scale > 1 ? 'grab' : 'zoom-in';
-                }
-            }
-        };
-
-        parentDoc.addEventListener('mouseup', stopDrag, { capture: true });
-        parentDoc.addEventListener('mouseleave', stopDrag, { capture: true });
-
-        // 🌟 5. 点击黑边关闭背景重置坐标
-        parentDoc.addEventListener('click', function(e) {
-            if (e.target.classList.contains('my-bg')) {
-                parentDoc.querySelectorAll('.my-modal-img').forEach(img => {
-                    updateImg(img, 1, 0, 0, false);
-                });
-            }
-        }, { capture: true });
-    }
 </script>
-""", height=0, width=0)
