@@ -23,7 +23,7 @@ warnings.filterwarnings("ignore", message=".*st.components.v1.html.*")
 # ==========================================
 # 0. 网页基础配置与全局 CSS
 # ==========================================
-st.set_page_config(page_title="AI Pro Studio V6.61", page_icon="🚀", layout="wide", initial_sidebar_state="auto")
+st.set_page_config(page_title="AI Pro Studio V6.62", page_icon="🚀", layout="wide", initial_sidebar_state="auto")
 
 st.markdown("""
 <style>
@@ -46,9 +46,10 @@ st.markdown("""
 # 1. 常量、数据库与缓存加速引擎
 # ==========================================
 MODEL_COSTS = {"gpt-image-2": 600, "gpt-image-2-vip": 900}
+# 🌟 彻底去除了混淆的“自定义像素”选项，回归纯净比例
 ratio_opts = ["auto", "1:1", "3:2", "2:3", "16:9", "9:16", "5:4", "4:5", "4:3", "3:4", "21:9", "9:21", "1:3", "3:1", "2:1", "1:2"]
-# 🌟 修复：严格按照官方公告，移除超纲的 6k，最高支持到 4k
-pixel_opts = ["默认", "1k", "2k", "4k", "自定义"]
+# 🌟 独立的像素精度菜单
+pixel_opts = ["默认", "1k", "2k", "4k", "6k", "自定义"]
 quality_opts = ["auto", "high", "medium", "low"]
 BJ_TZ = pytz.timezone('Asia/Shanghai')
 
@@ -409,6 +410,7 @@ with col_main:
         
     if prompt_txt != st.session_state.current_prompt: st.session_state.current_prompt = prompt_txt
 
+    # 🌟 彻底拆分的三个控制区
     c1, c2, c3 = st.columns(3)
     with c1: 
         aspect_ratio = st.selectbox("📏 画幅比例", ratio_opts, key=f"r_{menu}")
@@ -419,7 +421,7 @@ with col_main:
 
     custom_size = ""
     if pixel_res == "自定义":
-        custom_size = st.text_input("输入自定义像素 (例如: 2560x1440)", key=f"c_{menu}")
+        custom_size = st.text_input("输入自定义像素 (例如: 1024x1024)", key=f"c_{menu}")
     
     if st.button("✨ 立即生成", type="primary", use_container_width=True):
         if card_info['final_points'] < 600: st.error("❌ 积分不足")
@@ -430,32 +432,31 @@ with col_main:
                     final_ratio = "auto"
                     
                     if menu == "✍️ 文生图":
-                        if pixel_res == "自定义" and custom_size:
-                            final_ratio = custom_size
+                        if pixel_res == "自定义":
+                            # 防御空字符串崩溃
+                            final_ratio = custom_size.strip() if custom_size.strip() else aspect_ratio
+                            if not final_ratio or final_ratio == "自定义像素": 
+                                final_ratio = "auto"
                         elif pixel_res == "默认":
                             final_ratio = aspect_ratio
                         else:
-                            # 🌟 核心：移除 6k，最高支持 4k 对齐
-                            res_map = {"1k": 1024, "2k": 2048, "4k": 4096}
-                            max_dim = res_map.get(pixel_res, 1024)
+                            # 🌟 OpenAI 标准基准映射算法 (彻底避免非标长宽比被 API 拒绝)
+                            multiplier_map = {"1k": 1, "2k": 2, "4k": 4, "6k": 6}
+                            m = multiplier_map.get(pixel_res, 1)
                             
                             if aspect_ratio == "auto":
-                                final_ratio = f"{max_dim}x{max_dim}"
+                                final_ratio = f"{1024*m}x{1024*m}"
                             else:
                                 try:
                                     w_r, h_r = map(float, aspect_ratio.split(":"))
-                                    if w_r >= h_r:
-                                        w = max_dim
-                                        h = max_dim * (h_r / w_r)
-                                    else:
-                                        h = max_dim
-                                        w = max_dim * (w_r / h_r)
-                                    
-                                    # 严密的 64 整数倍强制对齐算法
-                                    w = int(max(64, round(w / 64) * 64))
-                                    h = int(max(64, round(h / 64) * 64))
-                                    
-                                    final_ratio = f"{w}x{h}"
+                                    if w_r == h_r:
+                                        final_ratio = f"{1024*m}x{1024*m}"
+                                    elif w_r > h_r: 
+                                        # 横图：匹配官方 1792x1024 基准
+                                        final_ratio = f"{1792*m}x{1024*m}"
+                                    else: 
+                                        # 竖图：匹配官方 1024x1792 基准
+                                        final_ratio = f"{1024*m}x{1792*m}"
                                 except:
                                     final_ratio = aspect_ratio
                     
