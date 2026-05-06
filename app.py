@@ -23,7 +23,7 @@ warnings.filterwarnings("ignore", message=".*st.components.v1.html.*")
 # ==========================================
 # 0. 网页基础配置与全局 CSS
 # ==========================================
-st.set_page_config(page_title="AI Pro Studio V6.65", page_icon="🚀", layout="wide", initial_sidebar_state="auto")
+st.set_page_config(page_title="AI Pro Studio V6.66", page_icon="🚀", layout="wide", initial_sidebar_state="auto")
 
 st.markdown("""
 <style>
@@ -394,8 +394,8 @@ with col_main:
                         f'<div class="my-overlay">'
                         f'<label for="{zoom_id}" class="my-bg"></label>'
                         f'<div style="position:absolute; top:20px; z-index:20; background:rgba(0,0,0,0.7); padding:8px 20px; border-radius:20px;">'
-                        f'<button class="btn" onclick="document.getElementById(\'mod_{zoom_id}\').style.transform = \'scale(\' + (parseFloat(document.getElementById(\'mod_{zoom_id}\').getAttribute(\'data-scale\') || 1) + 0.3) + \')\'; document.getElementById(\'mod_{zoom_id}\').setAttribute(\'data-scale\', parseFloat(document.getElementById(\'mod_{zoom_id}\').getAttribute(\'data-scale\') || 1) + 0.3);" style="background:#00ffd5; color:#000; border:none; padding:4px 12px; border-radius:4px; font-weight:bold; cursor:pointer;">➕ 放大</button> '
-                        f'<button class="btn" onclick="document.getElementById(\'mod_{zoom_id}\').style.transform = \'scale(\' + Math.max(1, parseFloat(document.getElementById(\'mod_{zoom_id}\').getAttribute(\'data-scale\') || 1) - 0.3) + \')\'; document.getElementById(\'mod_{zoom_id}\').setAttribute(\'data-scale\', Math.max(1, parseFloat(document.getElementById(\'mod_{zoom_id}\').getAttribute(\'data-scale\') || 1) - 0.3));" style="background:#00ffd5; color:#000; border:none; padding:4px 12px; border-radius:4px; font-weight:bold; cursor:pointer;">➖ 缩小</button>'
+                        f'<button class="btn" style="background:#00ffd5; color:#000; border:none; padding:4px 12px; border-radius:4px; font-weight:bold; cursor:pointer; margin-right:6px;" onclick="document.getElementById(\'mod_{zoom_id}\').style.transform = \'scale(\' + (parseFloat(document.getElementById(\'mod_{zoom_id}\').getAttribute(\'data-scale\') || 1) + 0.3) + \')\'; document.getElementById(\'mod_{zoom_id}\').setAttribute(\'data-scale\', parseFloat(document.getElementById(\'mod_{zoom_id}\').getAttribute(\'data-scale\') || 1) + 0.3);">➕ 放大</button>'
+                        f'<button class="btn" style="background:#00ffd5; color:#000; border:none; padding:4px 12px; border-radius:4px; font-weight:bold; cursor:pointer;" onclick="document.getElementById(\'mod_{zoom_id}\').style.transform = \'scale(\' + Math.max(1, parseFloat(document.getElementById(\'mod_{zoom_id}\').getAttribute(\'data-scale\') || 1) - 0.3) + \')\'; document.getElementById(\'mod_{zoom_id}\').setAttribute(\'data-scale\', Math.max(1, parseFloat(document.getElementById(\'mod_{zoom_id}\').getAttribute(\'data-scale\') || 1) - 0.3));">➖ 缩小</button>'
                         f'</div>'
                         f'<img src="{data_uri}" class="my-modal-img" id="mod_{zoom_id}" draggable="false">'
                         f'</div>'
@@ -430,38 +430,23 @@ with col_main:
             with st.spinner("🚀 打包云端数据..."):
                 try:
                     final_ratio = "auto"
-                    
                     if menu == "✍️ 文生图":
-                        if pixel_res == "自定义":
+                        if pixel_res == "自定义" and custom_size:
                             final_ratio = custom_size.strip() if custom_size.strip() else aspect_ratio
-                            if not final_ratio or final_ratio == "自定义像素": 
-                                final_ratio = "auto"
                         elif pixel_res == "默认":
                             final_ratio = aspect_ratio
                         else:
                             multiplier_map = {"1k": 1, "2k": 2, "4k": 4}
                             m = multiplier_map.get(pixel_res, 1)
-                            
                             if aspect_ratio == "auto":
                                 final_ratio = f"{1024*m}x{1024*m}"
                             else:
-                                try:
-                                    w_r, h_r = map(float, aspect_ratio.split(":"))
-                                    if w_r == h_r:
-                                        final_ratio = f"{1024*m}x{1024*m}"
-                                    elif w_r > h_r: 
-                                        final_ratio = f"{1792*m}x{1024*m}"
-                                    else: 
-                                        final_ratio = f"{1024*m}x{1792*m}"
-                                    
-                                    w = int(max(64, round(int(final_ratio.split('x')[0]) / 64) * 64))
-                                    h = int(max(64, round(int(final_ratio.split('x')[1]) / 64) * 64))
-                                    final_ratio = f"{w}x{h}"
-                                except:
-                                    final_ratio = aspect_ratio
+                                w_r, h_r = map(float, aspect_ratio.split(":"))
+                                w = 1792 * m if w_r > h_r else 1024 * m
+                                h = 1024 * m if w_r > h_r else 1792 * m
+                                final_ratio = f"{w}x{h}"
                     
                     payload = {"model": selected_model, "prompt": prompt_txt, "webHook": "-1", "shutProgress": True, "aspectRatio": final_ratio, "quality": quality if menu == "✍️ 文生图" else "auto"}
-                    
                     if menu == "🖼️ 图生图":
                         if not uploaded_files: st.error("⚠️ 请先上传参考图"); st.stop()
                         payload["urls"] = uploaded_b64_urls 
@@ -478,8 +463,8 @@ with col_main:
                             if menu == "🖼️ 图生图": new_task["src_urls"] = uploaded_b64_urls
                             sync_task_to_db(new_task, user_key)
                             st.rerun() 
-                        else: st.error(f"❌ API未返回有效ID")
-                    else: st.error(f"📡 API 服务器报错")
+                        else: st.error("❌ API未返回有效ID")
+                    else: st.error("📡 API 服务器报错")
                 except Exception as global_err: st.error(f"💥 提交发生致命错误: {str(global_err)}")
 
     st.divider()
@@ -534,7 +519,7 @@ with col_history:
                     src_urls = item.get('src_urls', []) 
                     
                     for i, url in enumerate(urls):
-                        modal_id = f"cb_{str(item['task_id']).replace('-','')}_{i}')}"
+                        modal_id = f"cb_{str(item['task_id']).replace('-','')}_{i}"
                         
                         html_str = (
                             f'<div style="position:relative; margin-bottom:10px;">'
@@ -546,8 +531,8 @@ with col_history:
                             f'<div class="my-overlay">'
                             f'<label for="{modal_id}" class="my-bg"></label>'
                             f'<div style="position:absolute; top:20px; z-index:20; background:rgba(0,0,0,0.7); padding:8px 20px; border-radius:20px;">'
-                            f'<button class="btn" style="background:#00ffd5; color:#000; border:none; padding:6px 14px; border-radius:4px; font-weight:bold; cursor:pointer; margin-right:6px;" onclick="document.getElementById(\'mod_{modal_id}\').style.transform = \'scale(\' + (parseFloat(document.getElementById(\'mod_{modal_id}\').getAttribute(\'data-scale\') || 1) + 0.3) + \')\'; document.getElementById(\'mod_{modal_id}\').setAttribute(\'data-scale\', parseFloat(document.getElementById(\'mod_{modal_id}\').getAttribute(\'data-scale\') || 1) + 0.3);">➕ 放大</button>'
-                            f'<button class="btn" style="background:#00ffd5; color:#000; border:none; padding:6px 14px; border-radius:4px; font-weight:bold; cursor:pointer;" onclick="document.getElementById(\'mod_{modal_id}\').style.transform = \'scale(\' + Math.max(1, parseFloat(document.getElementById(\'mod_{modal_id}\').getAttribute(\'data-scale\') || 1) - 0.3) + \')\'; document.getElementById(\'mod_{modal_id}\').setAttribute(\'data-scale\', Math.max(1, parseFloat(document.getElementById(\'mod_{modal_id}\').getAttribute(\'data-scale\') || 1) - 0.3));">➖ 缩小</button>'
+                            f'<button class="btn" style="background:#00ffd5; color:#000; border:none; padding:4px 12px; border-radius:4px; font-weight:bold; cursor:pointer; margin-right:6px;" onclick="document.getElementById(\'mod_{modal_id}\').style.transform = \'scale(\' + (parseFloat(document.getElementById(\'mod_{modal_id}\').getAttribute(\'data-scale\') || 1) + 0.3) + \')\'; document.getElementById(\'mod_{modal_id}\').setAttribute(\'data-scale\', parseFloat(document.getElementById(\'mod_{modal_id}\').getAttribute(\'data-scale\') || 1) + 0.3);">➕ 放大</button>'
+                            f'<button class="btn" style="background:#00ffd5; color:#000; border:none; padding:4px 12px; border-radius:4px; font-weight:bold; cursor:pointer;" onclick="document.getElementById(\'mod_{modal_id}\').style.transform = \'scale(\' + Math.max(1, parseFloat(document.getElementById(\'mod_{modal_id}\').getAttribute(\'data-scale\') || 1) - 0.3) + \')\'; document.getElementById(\'mod_{modal_id}\').setAttribute(\'data-scale\', Math.max(1, parseFloat(document.getElementById(\'mod_{modal_id}\').getAttribute(\'data-scale\') || 1) - 0.3));">➖ 缩小</button>'
                             f'</div>'
                             f'<img src="{url}" class="my-modal-img" id="mod_{modal_id}" draggable="false">'
                             f'</div>'
@@ -559,5 +544,5 @@ with col_history:
                             if st.button("🪟 开启高级对比 (原图 vs 成品)", key=f"btn_comp_{item['task_id']}_{i}", use_container_width=True):
                                 show_viewer_dialog(src_urls[i], url)
                             
-                elif item['status'] == 'failed': st.error("❌ 生成失败")
+                elif item['status'] == 'failed': st.error(f"❌ 尺寸被拒绝 或 生成失败")
                 st.divider()
