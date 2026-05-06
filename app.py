@@ -23,7 +23,7 @@ warnings.filterwarnings("ignore", message=".*st.components.v1.html.*")
 # ==========================================
 # 0. 网页基础配置与全局 CSS
 # ==========================================
-st.set_page_config(page_title="AI Pro Studio V6.60", page_icon="🚀", layout="wide", initial_sidebar_state="auto")
+st.set_page_config(page_title="AI Pro Studio V6.61", page_icon="🚀", layout="wide", initial_sidebar_state="auto")
 
 st.markdown("""
 <style>
@@ -47,7 +47,8 @@ st.markdown("""
 # ==========================================
 MODEL_COSTS = {"gpt-image-2": 600, "gpt-image-2-vip": 900}
 ratio_opts = ["auto", "1:1", "3:2", "2:3", "16:9", "9:16", "5:4", "4:5", "4:3", "3:4", "21:9", "9:21", "1:3", "3:1", "2:1", "1:2"]
-pixel_opts = ["默认", "1k", "2k", "4k", "6k", "自定义"]
+# 🌟 修复：严格按照官方公告，移除超纲的 6k，最高支持到 4k
+pixel_opts = ["默认", "1k", "2k", "4k", "自定义"]
 quality_opts = ["auto", "high", "medium", "low"]
 BJ_TZ = pytz.timezone('Asia/Shanghai')
 
@@ -434,8 +435,8 @@ with col_main:
                         elif pixel_res == "默认":
                             final_ratio = aspect_ratio
                         else:
-                            # 🌟 核心修复：64 像素强制对齐引擎！
-                            res_map = {"1k": 1024, "2k": 2048, "4k": 4096, "6k": 6144}
+                            # 🌟 核心：移除 6k，最高支持 4k 对齐
+                            res_map = {"1k": 1024, "2k": 2048, "4k": 4096}
                             max_dim = res_map.get(pixel_res, 1024)
                             
                             if aspect_ratio == "auto":
