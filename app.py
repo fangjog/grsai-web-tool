@@ -23,7 +23,7 @@ warnings.filterwarnings("ignore", message=".*st.components.v1.html.*")
 # ==========================================
 # 0. 网页基础配置与全局 CSS
 # ==========================================
-st.set_page_config(page_title="AI Pro Studio V6.59", page_icon="🚀", layout="wide", initial_sidebar_state="auto")
+st.set_page_config(page_title="AI Pro Studio V6.60", page_icon="🚀", layout="wide", initial_sidebar_state="auto")
 
 st.markdown("""
 <style>
@@ -280,7 +280,7 @@ clean_api_name = (card_info.get('api_secret_name') or "API_VIP888").strip("'").s
 GRSAI_API_KEY = st.secrets.get(clean_api_name, "")
 
 # ==========================================
-# 4. 自动轮询 (🌟 强效错误捕捉版)
+# 4. 自动轮询 
 # ==========================================
 def auto_poll_task(task_id, active_user_key, model_used, start_time, src_urls=None):
     placeholder = st.empty()
@@ -297,7 +297,6 @@ def auto_poll_task(task_id, active_user_key, model_used, start_time, src_urls=No
             if q_res and isinstance(q_res, dict):
                 status, urls = "", []
                 
-                # 1. 深度解析 API 返回体 (防踩坑)
                 if "data" in q_res and isinstance(q_res["data"], dict):
                     status = str(q_res["data"].get("status", "")).lower()
                     results_list = q_res["data"].get("results", [])
@@ -311,13 +310,11 @@ def auto_poll_task(task_id, active_user_key, model_used, start_time, src_urls=No
                     elif q_res.get("url"):
                         urls = [q_res.get("url")]
                 
-                # 2. 强效错误码兜底：如果服务器直接报错返回了 code != 0 且没说在运行，强制判定为失败！
                 if str(q_res.get("code", "0")) != "0" and status not in ["running", "in_progress", "submitted"]:
                     status = "failed"
 
-                # 3. 状态判定
                 if status in ["succeeded", "success"] and urls:
-                    placeholder.markdown(f'<div style="background:#111;border-radius:10px;padding:4px;border:1px solid #333;"><div style="height:12px;border-radius:6px;background:background:linear-gradient(90deg,#00ff88,#00c2ff);width:100%;"></div></div><div style="text-align:right;color:#00ff88;font-size:12px;margin-top:4px;">✅ 绘制完成！</div>', unsafe_allow_html=True)
+                    placeholder.markdown(f'<div style="background:#111;border-radius:10px;padding:4px;border:1px solid #333;"><div style="height:12px;border-radius:6px;background:linear-gradient(90deg,#00ff88,#00c2ff);width:100%;"></div></div><div style="text-align:right;color:#00ff88;font-size:12px;margin-top:4px;">✅ 绘制完成！</div>', unsafe_allow_html=True)
                     deduct_balance(active_user_key, MODEL_COSTS.get(model_used, 600))
                     task_update = {"task_id": task_id, "status": "succeeded", "urls": [urls[0]], "is_deducted": True}
                     if src_urls: task_update["src_urls"] = src_urls 
@@ -430,12 +427,14 @@ with col_main:
             with st.spinner("🚀 打包云端数据..."):
                 try:
                     final_ratio = "auto"
+                    
                     if menu == "✍️ 文生图":
                         if pixel_res == "自定义" and custom_size:
                             final_ratio = custom_size
                         elif pixel_res == "默认":
                             final_ratio = aspect_ratio
                         else:
+                            # 🌟 核心修复：64 像素强制对齐引擎！
                             res_map = {"1k": 1024, "2k": 2048, "4k": 4096, "6k": 6144}
                             max_dim = res_map.get(pixel_res, 1024)
                             
@@ -443,13 +442,18 @@ with col_main:
                                 final_ratio = f"{max_dim}x{max_dim}"
                             else:
                                 try:
-                                    w_r, h_r = map(int, aspect_ratio.split(":"))
+                                    w_r, h_r = map(float, aspect_ratio.split(":"))
                                     if w_r >= h_r:
                                         w = max_dim
-                                        h = int(max_dim * (h_r / w_r))
+                                        h = max_dim * (h_r / w_r)
                                     else:
                                         h = max_dim
-                                        w = int(max_dim * (w_r / h_r))
+                                        w = max_dim * (w_r / h_r)
+                                    
+                                    # 严密的 64 整数倍强制对齐算法
+                                    w = int(max(64, round(w / 64) * 64))
+                                    h = int(max(64, round(h / 64) * 64))
+                                    
                                     final_ratio = f"{w}x{h}"
                                 except:
                                     final_ratio = aspect_ratio
@@ -550,11 +554,11 @@ with col_history:
                             if st.button("🪟 开启高级对比 (原图 vs 成品)", key=f"btn_comp_{item['task_id']}_{i}", use_container_width=True):
                                 show_viewer_dialog(src_urls[i], url)
                             
-                elif item['status'] == 'failed': st.error(f"❌ 任务生成失败 / 像素被拒绝")
+                elif item['status'] == 'failed': st.error(f"❌ 尺寸被拒绝 或 生成失败")
                 st.divider()
 
 # ==========================================
-# 6. 单图双模放大计算引擎 (支持点击放大+滚轮)
+# 6. 单图双模放大计算引擎
 # ==========================================
 components.html("""
 <script>
