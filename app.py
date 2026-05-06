@@ -23,7 +23,7 @@ warnings.filterwarnings("ignore", message=".*st.components.v1.html.*")
 # ==========================================
 # 0. 网页基础配置与全局 CSS
 # ==========================================
-st.set_page_config(page_title="AI Pro Studio V6.58", page_icon="🚀", layout="wide", initial_sidebar_state="auto")
+st.set_page_config(page_title="AI Pro Studio V6.59", page_icon="🚀", layout="wide", initial_sidebar_state="auto")
 
 st.markdown("""
 <style>
@@ -46,10 +46,7 @@ st.markdown("""
 # 1. 常量、数据库与缓存加速引擎
 # ==========================================
 MODEL_COSTS = {"gpt-image-2": 600, "gpt-image-2-vip": 900}
-
-# 🌟 更新：去除了画幅比例中的“自定义像素”，独立拆分
 ratio_opts = ["auto", "1:1", "3:2", "2:3", "16:9", "9:16", "5:4", "4:5", "4:3", "3:4", "21:9", "9:21", "1:3", "3:1", "2:1", "1:2"]
-# 🌟 新增：独立的像素精度选项
 pixel_opts = ["默认", "1k", "2k", "4k", "6k", "自定义"]
 quality_opts = ["auto", "high", "medium", "low"]
 BJ_TZ = pytz.timezone('Asia/Shanghai')
@@ -283,7 +280,7 @@ clean_api_name = (card_info.get('api_secret_name') or "API_VIP888").strip("'").s
 GRSAI_API_KEY = st.secrets.get(clean_api_name, "")
 
 # ==========================================
-# 4. 自动轮询 
+# 4. 自动轮询 (🌟 强效错误捕捉版)
 # ==========================================
 def auto_poll_task(task_id, active_user_key, model_used, start_time, src_urls=None):
     placeholder = st.empty()
@@ -296,25 +293,41 @@ def auto_poll_task(task_id, active_user_key, model_used, start_time, src_urls=No
         try:
             resp = requests.post(query_url, headers=headers, json={"id": task_id}, verify=False, timeout=10)
             q_res = parse_api_response(resp.text) 
-            if q_res:
+            
+            if q_res and isinstance(q_res, dict):
                 status, urls = "", []
-                if q_res.get("code") == 0 and "data" in q_res:
-                    status = q_res["data"].get("status")
-                    urls = [img.get("url") for img in q_res["data"].get("results", []) if img.get("url")]
+                
+                # 1. 深度解析 API 返回体 (防踩坑)
+                if "data" in q_res and isinstance(q_res["data"], dict):
+                    status = str(q_res["data"].get("status", "")).lower()
+                    results_list = q_res["data"].get("results", [])
+                    if isinstance(results_list, list):
+                        urls = [img.get("url") for img in results_list if isinstance(img, dict) and img.get("url")]
                 elif "status" in q_res:
-                    status = q_res.get("status")
-                    urls = [img.get("url") for img in q_res.get("results", []) if img.get("url")] if "results" in q_res else ([q_res.get("url")] if q_res.get("url") else [])
+                    status = str(q_res.get("status", "")).lower()
+                    results_list = q_res.get("results", [])
+                    if isinstance(results_list, list):
+                        urls = [img.get("url") for img in results_list if isinstance(img, dict) and img.get("url")]
+                    elif q_res.get("url"):
+                        urls = [q_res.get("url")]
+                
+                # 2. 强效错误码兜底：如果服务器直接报错返回了 code != 0 且没说在运行，强制判定为失败！
+                if str(q_res.get("code", "0")) != "0" and status not in ["running", "in_progress", "submitted"]:
+                    status = "failed"
 
-                if status == "succeeded" and urls:
-                    placeholder.markdown(f'<div style="background:#111;border-radius:10px;padding:4px;border:1px solid #333;"><div style="height:12px;border-radius:6px;background:linear-gradient(90deg,#00ff88,#00c2ff);width:100%;"></div></div><div style="text-align:right;color:#00ff88;font-size:12px;margin-top:4px;">✅ 绘制完成！</div>', unsafe_allow_html=True)
+                # 3. 状态判定
+                if status in ["succeeded", "success"] and urls:
+                    placeholder.markdown(f'<div style="background:#111;border-radius:10px;padding:4px;border:1px solid #333;"><div style="height:12px;border-radius:6px;background:background:linear-gradient(90deg,#00ff88,#00c2ff);width:100%;"></div></div><div style="text-align:right;color:#00ff88;font-size:12px;margin-top:4px;">✅ 绘制完成！</div>', unsafe_allow_html=True)
                     deduct_balance(active_user_key, MODEL_COSTS.get(model_used, 600))
                     task_update = {"task_id": task_id, "status": "succeeded", "urls": [urls[0]], "is_deducted": True}
                     if src_urls: task_update["src_urls"] = src_urls 
                     sync_task_to_db(task_update, active_user_key)
                     time.sleep(1.0); st.rerun(); return 
-                elif status == "failed":
+                
+                elif status in ["failed", "fail", "error", "timeout", "rejected"]:
                     sync_task_to_db({"task_id": task_id, "status": "failed"}, active_user_key)
                     st.rerun(); return
+                    
         except Exception as e: pass
         time.sleep(3)
 
@@ -398,7 +411,6 @@ with col_main:
         
     if prompt_txt != st.session_state.current_prompt: st.session_state.current_prompt = prompt_txt
 
-    # 🌟 核心升级：拆分参数控制区，独立“比例”与“分辨率”
     c1, c2, c3 = st.columns(3)
     with c1: 
         aspect_ratio = st.selectbox("📏 画幅比例", ratio_opts, key=f"r_{menu}")
@@ -417,7 +429,6 @@ with col_main:
         else:
             with st.spinner("🚀 打包云端数据..."):
                 try:
-                    # 🌟 智能分辨率计算引擎 (根据比例和精度计算出 WxH 给 API)
                     final_ratio = "auto"
                     if menu == "✍️ 文生图":
                         if pixel_res == "自定义" and custom_size:
@@ -425,7 +436,6 @@ with col_main:
                         elif pixel_res == "默认":
                             final_ratio = aspect_ratio
                         else:
-                            # 预设基准分辨率的最大边界值
                             res_map = {"1k": 1024, "2k": 2048, "4k": 4096, "6k": 6144}
                             max_dim = res_map.get(pixel_res, 1024)
                             
@@ -434,7 +444,6 @@ with col_main:
                             else:
                                 try:
                                     w_r, h_r = map(int, aspect_ratio.split(":"))
-                                    # 根据比例计算准确的 WxH 字符串
                                     if w_r >= h_r:
                                         w = max_dim
                                         h = int(max_dim * (h_r / w_r))
@@ -541,7 +550,7 @@ with col_history:
                             if st.button("🪟 开启高级对比 (原图 vs 成品)", key=f"btn_comp_{item['task_id']}_{i}", use_container_width=True):
                                 show_viewer_dialog(src_urls[i], url)
                             
-                elif item['status'] == 'failed': st.error(f"❌ 失败/未通过审查")
+                elif item['status'] == 'failed': st.error(f"❌ 任务生成失败 / 像素被拒绝")
                 st.divider()
 
 # ==========================================
