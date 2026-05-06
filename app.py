@@ -23,7 +23,7 @@ warnings.filterwarnings("ignore", message=".*st.components.v1.html.*")
 # ==========================================
 # 0. 网页基础配置与全局 CSS
 # ==========================================
-st.set_page_config(page_title="AI Pro Studio V6.64", page_icon="🚀", layout="wide", initial_sidebar_state="auto")
+st.set_page_config(page_title="AI Pro Studio V6.65", page_icon="🚀", layout="wide", initial_sidebar_state="auto")
 
 st.markdown("""
 <style>
@@ -38,7 +38,7 @@ st.markdown("""
     .my-overlay { display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.92); z-index: 999999; align-items: center; justify-content: center; overflow: hidden; }
     .my-cb:checked ~ .my-overlay { display: flex !important; }
     .my-bg { position: absolute; top:0; left:0; width:100%; height:100%; cursor: zoom-out; z-index: 1; }
-    .my-modal-img { position: relative; z-index: 10; max-width: 90vw; max-height: 90vh; border-radius: 8px; box-shadow: 0 0 50px rgba(0,0,0,0.8); object-fit: contain; }
+    .my-modal-img { position: relative; z-index: 10; max-width: 90vw; max-height: 90vh; border-radius: 8px; box-shadow: 0 0 50px rgba(0,0,0,0.8); object-fit: contain; transform-origin: 0 0; will-change: transform; cursor: grab; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -394,10 +394,10 @@ with col_main:
                         f'<div class="my-overlay">'
                         f'<label for="{zoom_id}" class="my-bg"></label>'
                         f'<div style="position:absolute; top:20px; z-index:20; background:rgba(0,0,0,0.7); padding:8px 20px; border-radius:20px;">'
-                        f'<button class="btn" onclick="modalZoomIn()" style="background:#00ffd5; color:#000; border:none; padding:4px 12px; border-radius:4px; font-weight:bold; cursor:pointer;">➕ 放大</button> '
-                        f'<button class="btn" onclick="modalZoomOut()" style="background:#00ffd5; color:#000; border:none; padding:4px 12px; border-radius:4px; font-weight:bold; cursor:pointer;">➖ 缩小</button>'
+                        f'<button class="btn" onclick="document.getElementById(\'mod_{zoom_id}\').style.transform = \'scale(\' + (parseFloat(document.getElementById(\'mod_{zoom_id}\').getAttribute(\'data-scale\') || 1) + 0.3) + \')\'; document.getElementById(\'mod_{zoom_id}\').setAttribute(\'data-scale\', parseFloat(document.getElementById(\'mod_{zoom_id}\').getAttribute(\'data-scale\') || 1) + 0.3);" style="background:#00ffd5; color:#000; border:none; padding:4px 12px; border-radius:4px; font-weight:bold; cursor:pointer;">➕ 放大</button> '
+                        f'<button class="btn" onclick="document.getElementById(\'mod_{zoom_id}\').style.transform = \'scale(\' + Math.max(1, parseFloat(document.getElementById(\'mod_{zoom_id}\').getAttribute(\'data-scale\') || 1) - 0.3) + \')\'; document.getElementById(\'mod_{zoom_id}\').setAttribute(\'data-scale\', Math.max(1, parseFloat(document.getElementById(\'mod_{zoom_id}\').getAttribute(\'data-scale\') || 1) - 0.3));" style="background:#00ffd5; color:#000; border:none; padding:4px 12px; border-radius:4px; font-weight:bold; cursor:pointer;">➖ 缩小</button>'
                         f'</div>'
-                        f'<img src="{data_uri}" class="my-modal-img" id="mod_img_{i}" draggable="false">'
+                        f'<img src="{data_uri}" class="my-modal-img" id="mod_{zoom_id}" draggable="false">'
                         f'</div>'
                         f'</div>'
                     )
@@ -534,7 +534,7 @@ with col_history:
                     src_urls = item.get('src_urls', []) 
                     
                     for i, url in enumerate(urls):
-                        modal_id = f"cb_{str(item['task_id']).replace('-','')}_{i}"
+                        modal_id = f"cb_{str(item['task_id']).replace('-','')}_{i}')}"
                         
                         html_str = (
                             f'<div style="position:relative; margin-bottom:10px;">'
@@ -546,8 +546,8 @@ with col_history:
                             f'<div class="my-overlay">'
                             f'<label for="{modal_id}" class="my-bg"></label>'
                             f'<div style="position:absolute; top:20px; z-index:20; background:rgba(0,0,0,0.7); padding:8px 20px; border-radius:20px;">'
-                            f'<button class="btn" id="btn_in_{modal_id}" style="background:#00ffd5; color:#000; border:none; padding:6px 14px; border-radius:4px; font-weight:bold; cursor:pointer; margin-right:6px;" onclick="document.getElementById(\'mod_{modal_id}\').style.transform = \'scale(\' + (parseFloat(document.getElementById(\'mod_{modal_id}\').getAttribute(\'data-scale\') || 1) + 0.3) + \')\'; document.getElementById(\'mod_{modal_id}\').setAttribute(\'data-scale\', parseFloat(document.getElementById(\'mod_{modal_id}\').getAttribute(\'data-scale\') || 1) + 0.3);">➕ 放大</button>'
-                            f'<button class="btn" id="btn_out_{modal_id}" style="background:#00ffd5; color:#000; border:none; padding:6px 14px; border-radius:4px; font-weight:bold; cursor:pointer;" onclick="document.getElementById(\'mod_{modal_id}\').style.transform = \'scale(\' + Math.max(1, parseFloat(document.getElementById(\'mod_{modal_id}\').getAttribute(\'data-scale\') || 1) - 0.3) + \')\'; document.getElementById(\'mod_{modal_id}\').setAttribute(\'data-scale\', Math.max(1, parseFloat(document.getElementById(\'mod_{modal_id}\').getAttribute(\'data-scale\') || 1) - 0.3));">➖ 缩小</button>'
+                            f'<button class="btn" style="background:#00ffd5; color:#000; border:none; padding:6px 14px; border-radius:4px; font-weight:bold; cursor:pointer; margin-right:6px;" onclick="document.getElementById(\'mod_{modal_id}\').style.transform = \'scale(\' + (parseFloat(document.getElementById(\'mod_{modal_id}\').getAttribute(\'data-scale\') || 1) + 0.3) + \')\'; document.getElementById(\'mod_{modal_id}\').setAttribute(\'data-scale\', parseFloat(document.getElementById(\'mod_{modal_id}\').getAttribute(\'data-scale\') || 1) + 0.3);">➕ 放大</button>'
+                            f'<button class="btn" style="background:#00ffd5; color:#000; border:none; padding:6px 14px; border-radius:4px; font-weight:bold; cursor:pointer;" onclick="document.getElementById(\'mod_{modal_id}\').style.transform = \'scale(\' + Math.max(1, parseFloat(document.getElementById(\'mod_{modal_id}\').getAttribute(\'data-scale\') || 1) - 0.3) + \')\'; document.getElementById(\'mod_{modal_id}\').setAttribute(\'data-scale\', Math.max(1, parseFloat(document.getElementById(\'mod_{modal_id}\').getAttribute(\'data-scale\') || 1) - 0.3));">➖ 缩小</button>'
                             f'</div>'
                             f'<img src="{url}" class="my-modal-img" id="mod_{modal_id}" draggable="false">'
                             f'</div>'
@@ -559,6 +559,5 @@ with col_history:
                             if st.button("🪟 开启高级对比 (原图 vs 成品)", key=f"btn_comp_{item['task_id']}_{i}", use_container_width=True):
                                 show_viewer_dialog(src_urls[i], url)
                             
-                elif item['status'] == 'failed': st.error(f"❌ 尺寸被拒绝 或 生成失败")
+                elif item['status'] == 'failed': st.error("❌ 生成失败")
                 st.divider()
-</script>
