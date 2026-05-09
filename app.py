@@ -22,46 +22,13 @@ warnings.filterwarnings("ignore")
 # ==========================================
 # 0. 网页基础配置与全局 CSS
 # ==========================================
-st.set_page_config(page_title="AI Pro Studio V6.72", page_icon="🚀", layout="wide", initial_sidebar_state="auto")
+st.set_page_config(page_title="AI Pro Studio V6.73", page_icon="🚀", layout="wide", initial_sidebar_state="auto")
 
-# 🌟 绝技：将按钮样式强制重塑为“图片容器”
 st.markdown("""
 <style>
     [data-testid="stVerticalBlock"] { overflow-x: hidden !important; }
     .stButton > button { border-radius: 8px; font-weight: bold; transition: all 0.3s; }
     button[title="View fullscreen"] { display: none !important; }
-    
-    /* 核心：图片按钮样式 */
-    .stButton.image-btn-container > button {
-        width: 100% !important;
-        padding: 0 !important;
-        border: 2px solid #333 !important;
-        border-radius: 12px !important;
-        background-color: #0e1117 !important;
-        overflow: hidden !important;
-        transition: 0.3s ease !important;
-        display: flex !important;
-        flex-direction: column !important;
-    }
-    .stButton.image-btn-container > button:hover {
-        border-color: #00ffd5 !important;
-        transform: translateY(-2px);
-        box-shadow: 0 4px 20px rgba(0,255,213,0.3) !important;
-    }
-    .stButton.image-btn-container img {
-        width: 100%;
-        display: block;
-        object-fit: contain;
-    }
-    .stButton.image-btn-container .btn-hint {
-        background: rgba(0,255,213,0.1);
-        color: #00ffd5;
-        font-size: 11px;
-        padding: 6px 0;
-        width: 100%;
-        text-align: center;
-        border-top: 1px solid #333;
-    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -227,21 +194,16 @@ def auto_poll_task(task_id, active_user_key, model_used, start_time, src_urls=No
             resp = requests.post("https://grsai.dakka.com.cn/v1/draw/result", headers=headers, json={"id": task_id}, verify=False, timeout=10)
             q_res = parse_api_response(resp.text)
             if q_res and isinstance(q_res, dict):
-                # 🌟 1. 安全获取基础 status
                 status = str(q_res.get("status", "")).lower()
-                
-                # 🌟 2. 安全解析 data 块 (防 null 指针异常)
                 data_obj = q_res.get("data")
                 if isinstance(data_obj, dict):
                     status = str(data_obj.get("status", status)).lower()
                 
-                # 🌟 3. 错误兜底机制：只要出现 error 或 failure_reason 有值，强制判定失败！
                 if str(q_res.get("error", "")) or str(q_res.get("failure_reason", "")):
                     status = "failed"
                 if isinstance(data_obj, dict) and (str(data_obj.get("error", "")) or str(data_obj.get("failure_reason", ""))):
                     status = "failed"
                     
-                # 🌟 4. 异常 code 兜底
                 if str(q_res.get("code", "0")) != "0" and status not in ["running", "in_progress"]: 
                     status = "failed"
 
@@ -250,7 +212,7 @@ def auto_poll_task(task_id, active_user_key, model_used, start_time, src_urls=No
                 elif status in ["failed", "fail", "error"]:
                     sync_task_to_db({"task_id": task_id, "status": "failed"}, active_user_key); st.rerun(); return
         except Exception as e:
-            pass # 静默容错，下一次循环继续
+            pass 
         time.sleep(3)
 
 # ==========================================
@@ -339,13 +301,52 @@ with col_history:
                     auto_poll_task(item['task_id'], user_key, item.get('model','gpt-image-2'), item['timestamp'], item.get('src_urls'))
                 elif item['status'] == 'succeeded':
                     for i, url in enumerate(item.get('urls', [])):
-                        # 🌟 核心：将按钮标签重塑为图片
-                        btn_label = f'<img src="{url}"><div class="btn-hint">🔍 点击查看详情</div>'
-                        st.markdown('<div class="image-btn-container">', unsafe_allow_html=True)
-                        if st.button(btn_label, key=f"img_btn_{item['task_id']}_{i}"):
+                        # 🌟 绝技：动态生成专属 CSS，把图片刷到按钮背景上！
+                        btn_id = f"magic-btn-{item['task_id']}-{i}"
+                        st.markdown(f"""
+                        <style>
+                        .{btn_id} button {{
+                            width: 100% !important;
+                            height: 250px !important;
+                            background-image: url("{url}") !important;
+                            background-size: contain !important;
+                            background-repeat: no-repeat !important;
+                            background-position: center !important;
+                            background-color: #111 !important;
+                            border: 1px solid #333 !important;
+                            border-radius: 12px !important;
+                            padding: 0 !important;
+                            display: flex !important;
+                            align-items: flex-end !important;
+                            justify-content: center !important;
+                            transition: 0.2s !important;
+                        }}
+                        .{btn_id} button:hover {{
+                            border-color: #00ffd5 !important;
+                            transform: translateY(-2px) !important;
+                            box-shadow: 0 4px 15px rgba(0,255,213,0.3) !important;
+                        }}
+                        .{btn_id} button p {{
+                            background: rgba(0,0,0,0.7) !important;
+                            color: #00ffd5 !important;
+                            width: 100% !important;
+                            margin: 0 !important;
+                            padding: 6px 0 !important;
+                            font-size: 12px !important;
+                        }}
+                        </style>
+                        <div class="{btn_id}">
+                        """, unsafe_allow_html=True)
+                        
+                        # 纯净的文字标签，Streamlit 绝对不会拦截！
+                        btn_txt = "🔍 点击查看大图细节" + (" (原图同步对比)" if item.get('src_urls') else "")
+                        if st.button(btn_txt, key=f"img_btn_{item['task_id']}_{i}", use_container_width=True):
                             srcs = item.get('src_urls', [])
-                            if srcs and i < len(srcs): show_viewer_dialog(url, srcs[i])
-                            else: show_viewer_dialog(url)
+                            if srcs and i < len(srcs): 
+                                show_viewer_dialog(url, srcs[i])
+                            else: 
+                                show_viewer_dialog(url)
+                                
                         st.markdown('</div>', unsafe_allow_html=True)
-                elif item['status'] == 'failed': st.error("❌ API拒绝: 图像上传失败 / 格式错误")
+                elif item['status'] == 'failed': st.error("❌ API拒绝: 生成失败 / 检查提示词或尺寸")
                 st.divider()
