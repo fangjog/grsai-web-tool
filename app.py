@@ -388,39 +388,28 @@ with col_main:
     all_temps = fetch_templates(user_key)
     shortcuts = [t for t in all_temps if t['is_shortcut']]
     
+    def append_shortcut(word):
+        """Pure callback: prepend word to prompt. No st.rerun() inside."""
+        old_text = st.session_state.get("prompt_input_box", "").strip()
+        if old_text:
+            st.session_state["prompt_input_box"] = f"{word}, {old_text}"
+        else:
+            st.session_state["prompt_input_box"] = word
+
     def render_shortcut_buttons():
         if shortcuts:
             st.caption("✨ 快捷描述词模板")
             s_cols = st.columns(min(len(shortcuts), 5) if len(shortcuts) > 0 else 1)
             for i, s_item in enumerate(shortcuts):
-                if s_cols[i % 5].button(f"📌 {s_item['name']}", key=f"s_{s_item['id']}", use_container_width=True):
-                    st.session_state["_shortcut_word"] = s_item["content"]
+                s_cols[i % 5].button(f"📌 {s_item['name']}", key=f"s_{s_item['id']}",
+                                     on_click=append_shortcut, args=(s_item["content"],),
+                                     use_container_width=True)
 
     uploaded_b64_urls = [] 
     
     if menu == "✍️ 文生图":
         render_shortcut_buttons()
         prompt_txt = st.text_area("画面描述", key="prompt_input_box", height=120)
-        # Process shortcut click: prepend word to current prompt
-        if st.session_state.get("_shortcut_word"):
-            word = st.session_state.pop("_shortcut_word")
-            current = st.session_state.prompt_input_box.strip()
-            if current:
-                st.session_state.prompt_input_box = f"{word}, {current}"
-            else:
-                st.session_state.prompt_input_box = word
-            st.session_state["_focus_prompt"] = True
-            st.rerun()
-        if st.session_state.get("_focus_prompt"):
-            st.session_state["_focus_prompt"] = False
-            components.html("""
-            <script>
-            setTimeout(function(){
-                var ta = window.parent.document.querySelector('textarea[aria-label="画面描述"]');
-                if(ta){ta.focus();ta.setSelectionRange(ta.value.length,ta.value.length);}
-            }, 100);
-            </script>
-            """, height=0)
     else:
         st.markdown("#### 🖼️ 图生图")
         uploaded_files = st.file_uploader("上传参考图", type=["png", "jpg"], accept_multiple_files=True)
@@ -438,26 +427,8 @@ with col_main:
         
         render_shortcut_buttons() 
         prompt_txt = st.text_area("垫图指令", key="prompt_input_box", height=80)
-        # Process shortcut click: prepend word to current prompt
-        if st.session_state.get("_shortcut_word"):
-            word = st.session_state.pop("_shortcut_word")
-            current = st.session_state.prompt_input_box.strip()
-            if current:
-                st.session_state.prompt_input_box = f"{word}, {current}"
-            else:
-                st.session_state.prompt_input_box = word
-            st.session_state["_focus_prompt"] = True
-            st.rerun()
-        if st.session_state.get("_focus_prompt"):
-            st.session_state["_focus_prompt"] = False
-            components.html("""
-            <script>
-            setTimeout(function(){
-                var ta = window.parent.document.querySelector('textarea[aria-label="垫图指令"]');
-                if(ta){ta.focus();ta.setSelectionRange(ta.value.length,ta.value.length);}
-            }, 100);
-            </script>
-            """, height=0)
+
+
         
 
 
