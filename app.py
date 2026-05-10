@@ -394,11 +394,8 @@ with col_main:
             s_cols = st.columns(min(len(shortcuts), 5) if len(shortcuts) > 0 else 1)
             for i, s_item in enumerate(shortcuts):
                 if s_cols[i % 5].button(f"📌 {s_item['name']}", key=f"s_{s_item['id']}", use_container_width=True):
-                    # Append to existing prompt instead of overwriting
-                    prev = st.session_state.get("current_prompt", "")
-                    sep = ", " if prev.strip() else ""
-                    st.session_state.current_prompt = prev + sep + s_item["content"]
-                    st.session_state["_focus_prompt"] = True
+                    # Defer append: flag only, actual concat after textarea renders
+                    st.session_state["_pending_append"] = s_item["content"]
                     st.rerun()
 
     uploaded_b64_urls = [] 
@@ -406,6 +403,14 @@ with col_main:
     if menu == "✍️ 文生图":
         render_shortcut_buttons()
         prompt_txt = st.text_area("画面描述", key="current_prompt", height=120)
+        # Check if a shortcut was clicked and needs to be appended
+        if st.session_state.get("_pending_append"):
+            append_text = st.session_state.pop("_pending_append")
+            prev = st.session_state.get("current_prompt", "")
+            sep = ", " if prev.strip() else ""
+            st.session_state.current_prompt = prev + sep + append_text
+            st.session_state["_focus_prompt"] = True
+            st.rerun()
         if st.session_state.get("_focus_prompt"):
             st.session_state["_focus_prompt"] = False
             components.html("""
@@ -433,6 +438,14 @@ with col_main:
         
         render_shortcut_buttons() 
         prompt_txt = st.text_area("垫图指令", key="current_prompt", height=80)
+        # Check if a shortcut was clicked and needs to be appended
+        if st.session_state.get("_pending_append"):
+            append_text = st.session_state.pop("_pending_append")
+            prev = st.session_state.get("current_prompt", "")
+            sep = ", " if prev.strip() else ""
+            st.session_state.current_prompt = prev + sep + append_text
+            st.session_state["_focus_prompt"] = True
+            st.rerun()
         if st.session_state.get("_focus_prompt"):
             st.session_state["_focus_prompt"] = False
             components.html("""
