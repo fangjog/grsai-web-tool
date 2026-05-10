@@ -394,7 +394,11 @@ with col_main:
             s_cols = st.columns(min(len(shortcuts), 5) if len(shortcuts) > 0 else 1)
             for i, s_item in enumerate(shortcuts):
                 if s_cols[i % 5].button(f"📌 {s_item['name']}", key=f"s_{s_item['id']}", use_container_width=True):
-                    st.session_state.current_prompt = s_item['content']
+                    # Append to existing prompt instead of overwriting
+                    prev = st.session_state.get("current_prompt", "")
+                    sep = ", " if prev.strip() else ""
+                    st.session_state.current_prompt = prev + sep + s_item["content"]
+                    st.session_state["_focus_prompt"] = True
                     st.rerun()
 
     uploaded_b64_urls = [] 
@@ -402,6 +406,16 @@ with col_main:
     if menu == "✍️ 文生图":
         render_shortcut_buttons()
         prompt_txt = st.text_area("画面描述", key="current_prompt", height=120)
+        if st.session_state.get("_focus_prompt"):
+            st.session_state["_focus_prompt"] = False
+            components.html("""
+            <script>
+            setTimeout(function(){
+                var ta = window.parent.document.querySelector('textarea[aria-label="画面描述"]');
+                if(ta){ta.focus();ta.setSelectionRange(ta.value.length,ta.value.length);}
+            }, 100);
+            </script>
+            """, height=0)
     else:
         st.markdown("#### 🖼️ 图生图")
         uploaded_files = st.file_uploader("上传参考图", type=["png", "jpg"], accept_multiple_files=True)
@@ -419,6 +433,16 @@ with col_main:
         
         render_shortcut_buttons() 
         prompt_txt = st.text_area("垫图指令", key="current_prompt", height=80)
+        if st.session_state.get("_focus_prompt"):
+            st.session_state["_focus_prompt"] = False
+            components.html("""
+            <script>
+            setTimeout(function(){
+                var ta = window.parent.document.querySelector('textarea[aria-label="垫图指令"]');
+                if(ta){ta.focus();ta.setSelectionRange(ta.value.length,ta.value.length);}
+            }, 100);
+            </script>
+            """, height=0)
         
 
 
