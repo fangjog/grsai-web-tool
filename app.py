@@ -388,28 +388,29 @@ with col_main:
     all_temps = fetch_templates(user_key)
     shortcuts = [t for t in all_temps if t['is_shortcut']]
     
-    def on_shortcut_click(content):
-        """Prepend shortcut content to current prompt (new + old)"""
-        prev = st.session_state.get("prompt_input_box", "")
-        sep = ", " if prev.strip() else ""
-        st.session_state.prompt_input_box = content + sep + prev
-        st.session_state["_focus_prompt"] = True
-
     def render_shortcut_buttons():
         if shortcuts:
             st.caption("✨ 快捷描述词模板")
             s_cols = st.columns(min(len(shortcuts), 5) if len(shortcuts) > 0 else 1)
             for i, s_item in enumerate(shortcuts):
-                if s_cols[i % 5].button(f"📌 {s_item['name']}", key=f"s_{s_item['id']}",
-                                         on_click=on_shortcut_click, args=(s_item["content"],),
-                                         use_container_width=True):
-                    pass  # handled by on_click callback
+                if s_cols[i % 5].button(f"📌 {s_item['name']}", key=f"s_{s_item['id']}", use_container_width=True):
+                    st.session_state["_shortcut_word"] = s_item["content"]
 
     uploaded_b64_urls = [] 
     
     if menu == "✍️ 文生图":
         render_shortcut_buttons()
         prompt_txt = st.text_area("画面描述", key="prompt_input_box", height=120)
+        # Process shortcut click: prepend word to current prompt
+        if st.session_state.get("_shortcut_word"):
+            word = st.session_state.pop("_shortcut_word")
+            current = st.session_state.prompt_input_box.strip()
+            if current:
+                st.session_state.prompt_input_box = f"{word}, {current}"
+            else:
+                st.session_state.prompt_input_box = word
+            st.session_state["_focus_prompt"] = True
+            st.rerun()
         if st.session_state.get("_focus_prompt"):
             st.session_state["_focus_prompt"] = False
             components.html("""
@@ -437,6 +438,16 @@ with col_main:
         
         render_shortcut_buttons() 
         prompt_txt = st.text_area("垫图指令", key="prompt_input_box", height=80)
+        # Process shortcut click: prepend word to current prompt
+        if st.session_state.get("_shortcut_word"):
+            word = st.session_state.pop("_shortcut_word")
+            current = st.session_state.prompt_input_box.strip()
+            if current:
+                st.session_state.prompt_input_box = f"{word}, {current}"
+            else:
+                st.session_state.prompt_input_box = word
+            st.session_state["_focus_prompt"] = True
+            st.rerun()
         if st.session_state.get("_focus_prompt"):
             st.session_state["_focus_prompt"] = False
             components.html("""
