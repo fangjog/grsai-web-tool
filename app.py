@@ -470,14 +470,18 @@ with col_main:
         if not all_temps: st.caption("暂无模板。")
         else:
             for t in all_temps:
-                tc1, tc2, tc3, tc4 = st.columns([2, 4, 1.5, 1])
+                tc1, tc2, tc3, tc4, tc5 = st.columns([2, 3, 1, 1, 1])
                 tc1.write(f"**{t['name']}**")
                 tc2.caption(t['content'][:30] + "...")
-                is_pinned = t['is_shortcut']
-                if tc3.button("📌 取消固定" if is_pinned else "📍 固定快捷", key=f"pin_{t['id']}", use_container_width=True):
-                    toggle_template_shortcut(t['id'], is_pinned); st.rerun()
-                if tc4.button("🗑️ 删除", key=f"del_{t['id']}", use_container_width=True):
-                    delete_template(t['id']); st.rerun()
+                # Apply button
+                if tc3.button("应用", key=f"apply_{t['id']}", use_container_width=True):
+                    st.session_state.current_prompt = t["content"]
+                    st.rerun()
+                is_pinned = t["is_shortcut"]
+                if tc4.button("取消固定" if is_pinned else "固定快捷", key=f"pin_{t['id']}", use_container_width=True):
+                    toggle_template_shortcut(t["id"], is_pinned); st.rerun()
+                if tc5.button("删除", key=f"del_{t['id']}", use_container_width=True):
+                    delete_template(t["id"]); st.rerun()
 
 with col_history:
     c_hist, c_clear = st.columns([3, 1])
