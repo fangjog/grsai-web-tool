@@ -383,16 +383,16 @@ col_main, col_history = st.columns([7, 3])
 with col_main:
     selected_model = st.selectbox("🤖 模型选择", ["gpt-image-2", "gpt-image-2-vip"])
     
-    if "current_prompt" not in st.session_state: st.session_state.current_prompt = ""
+    if "prompt_input_box" not in st.session_state: st.session_state.prompt_input_box = ""
         
     all_temps = fetch_templates(user_key)
     shortcuts = [t for t in all_temps if t['is_shortcut']]
     
     def on_shortcut_click(content):
         """Prepend shortcut content to current prompt (new + old)"""
-        prev = st.session_state.get("current_prompt", "")
+        prev = st.session_state.get("prompt_input_box", "")
         sep = ", " if prev.strip() else ""
-        st.session_state.current_prompt = content + sep + prev
+        st.session_state.prompt_input_box = content + sep + prev
         st.session_state["_focus_prompt"] = True
 
     def render_shortcut_buttons():
@@ -409,7 +409,7 @@ with col_main:
     
     if menu == "✍️ 文生图":
         render_shortcut_buttons()
-        prompt_txt = st.text_area("画面描述", key="current_prompt", height=120)
+        prompt_txt = st.text_area("画面描述", key="prompt_input_box", height=120)
         if st.session_state.get("_focus_prompt"):
             st.session_state["_focus_prompt"] = False
             components.html("""
@@ -436,7 +436,7 @@ with col_main:
         if not uploaded_files: canvas_result = st_canvas(fill_color="rgba(255,165,0,0.3)", height=300, key="cvs")
         
         render_shortcut_buttons() 
-        prompt_txt = st.text_area("垫图指令", key="current_prompt", height=80)
+        prompt_txt = st.text_area("垫图指令", key="prompt_input_box", height=80)
         if st.session_state.get("_focus_prompt"):
             st.session_state["_focus_prompt"] = False
             components.html("""
@@ -457,12 +457,12 @@ with col_main:
     
     if st.button("✨ 立即生成", type="primary", use_container_width=True):
         if card_info['final_points'] < 600: st.error("❌ 积分不足")
-        elif not st.session_state.current_prompt and menu == "✍️ 文生图": st.error("❌ 请输入描述词")
+        elif not st.session_state.prompt_input_box and menu == "✍️ 文生图": st.error("❌ 请输入描述词")
         else:
             with st.spinner("🚀 打包云端数据..."):
                 try:
                     final_ratio = custom_size if (menu == "✍️ 文生图" and aspect_ratio == "自定义像素") else (aspect_ratio if menu == "✍️ 文生图" else "auto")
-                    payload = {"model": selected_model, "prompt": st.session_state.current_prompt, "webHook": "-1", "shutProgress": True, "aspectRatio": final_ratio, "quality": quality if menu == "✍️ 文生图" else "auto"}
+                    payload = {"model": selected_model, "prompt": st.session_state.prompt_input_box, "webHook": "-1", "shutProgress": True, "aspectRatio": final_ratio, "quality": quality if menu == "✍️ 文生图" else "auto"}
                     if menu == "🖼️ 图生图":
                         if not uploaded_files: st.error("⚠️ 请先上传参考图"); st.stop()
                         payload["urls"] = uploaded_b64_urls 
@@ -474,7 +474,7 @@ with col_main:
                         task_id = api_res.get("data", {}).get("id") if api_res and api_res.get("code") == 0 else api_res.get("id") if api_res else None
                         if task_id:
                             bj_now = datetime.now(BJ_TZ).strftime("%H:%M")
-                            new_task = {"task_id": task_id, "timestamp": time.time(), "time_str": bj_now, "prompt": st.session_state.current_prompt, "status": "running", "urls": [], "model": selected_model}
+                            new_task = {"task_id": task_id, "timestamp": time.time(), "time_str": bj_now, "prompt": st.session_state.prompt_input_box, "status": "running", "urls": [], "model": selected_model}
                             if menu == "🖼️ 图生图": new_task["src_urls"] = uploaded_b64_urls
                             sync_task_to_db(new_task, user_key)
                             st.rerun() 
@@ -503,7 +503,7 @@ with col_main:
                 tc2.caption(t['content'][:30] + "...")
                 # Apply button
                 if tc3.button("应用", key=f"apply_{t['id']}", use_container_width=True):
-                    st.session_state.current_prompt = t["content"]
+                    st.session_state.prompt_input_box = t["content"]
                     st.rerun()
                 is_pinned = t["is_shortcut"]
                 if tc4.button("取消固定" if is_pinned else "固定快捷", key=f"pin_{t['id']}", use_container_width=True):
