@@ -22,7 +22,7 @@ warnings.filterwarnings("ignore")
 # ==========================================
 # 0. 网页基础配置与全局 CSS
 # ==========================================
-st.set_page_config(page_title="AI Pro Studio V6.74", page_icon="🚀", layout="wide", initial_sidebar_state="auto")
+st.set_page_config(page_title="AI Pro Studio V6.75", page_icon="🚀", layout="wide", initial_sidebar_state="auto")
 
 st.markdown("""
 <style>
@@ -53,7 +53,7 @@ BJ_TZ = pytz.timezone('Asia/Shanghai')
 
 try:
     supabase: Client = create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
-except:
+except Exception as e:
     st.error("❌ 数据库连接失败"); st.stop()
 
 @st.cache_data(show_spinner=False, max_entries=20)
@@ -64,14 +64,14 @@ def process_cached_data_uri(img_bytes):
     img.save(buffered, format="JPEG", quality=82)
     return f"data:image/jpeg;base64,{base64.b64encode(buffered.getvalue()).decode()}"
 
-# 🌟 获取记录：现在统一获取上限扩大至 100，便于查看历史
+# 获取记录
 def fetch_tasks_from_db(card_key):
     try:
         res = supabase.table("tasks").select("*").eq("card_key", card_key).order("timestamp", desc=True).limit(100).execute()
         return res.data if res.data else []
-    except: return []
+    except Exception as e: return []
 
-# 🌟 新增：利用 status 前缀实现“无感归档”，无需改动数据库表结构！
+# 归档记录
 def archive_history_db(card_key):
     try:
         tasks = supabase.table("tasks").select("task_id, status").eq("card_key", card_key).execute().data
@@ -79,45 +79,43 @@ def archive_history_db(card_key):
             if not t['status'].startswith('history_'):
                 supabase.table("tasks").update({"status": "history_" + t['status']}).eq("task_id", t['task_id']).execute()
         return True
-    except: return False
+    except Exception as e: return False
 
 def sync_task_to_db(task_data, card_key):
     try:
         task_data["card_key"] = card_key
         supabase.table("tasks").upsert(task_data, on_conflict="task_id").execute()
-        # 🌟 移除原有的超出30条自动删除逻辑，实现历史永久保留
-    except: pass
+    except Exception as e: pass
 
 def clear_history_db(card_key):
     try:
         supabase.table("tasks").delete().eq("card_key", card_key).execute()
         return True
-    except: return False
+    except Exception as e: return False
 
-# --- 以下辅助函数保持不变 ---
 def fetch_templates(card_key):
     try:
         res = supabase.table("prompt_templates").select("*").eq("card_key", card_key).order("created_at", desc=True).execute()
         return res.data if res.data else []
-    except: return []
+    except Exception as e: return []
 
 def add_template(card_key, name, content, is_shortcut):
     try: supabase.table("prompt_templates").insert({"card_key": card_key, "name": name, "content": content, "is_shortcut": is_shortcut}).execute()
-    except: pass
+    except Exception as e: pass
 
 def delete_template(temp_id):
     try: supabase.table("prompt_templates").delete().eq("id", temp_id).execute()
-    except: pass
+    except Exception as e: pass
 
 def toggle_template_shortcut(temp_id, current_status):
     try: supabase.table("prompt_templates").update({"is_shortcut": not current_status}).eq("id", temp_id).execute()
-    except: pass
+    except Exception as e: pass
 
 def get_card_info(card_key):
     try:
         res = supabase.table("user_cards").select("*").eq("card_key", card_key).eq("is_active", True).execute()
         if res.data: return res.data[0]
-    except: pass
+    except Exception as e: pass
     return None
 
 def deduct_balance(card_key, amount):
@@ -127,16 +125,16 @@ def deduct_balance(card_key, amount):
             new_pts = res.data[0]['used_points'] + amount
             new_fin = res.data[0]['final_points'] - amount
             supabase.table("user_cards").update({"used_points": new_pts, "final_points": new_fin}).eq("card_key", card_key).execute()
-    except: pass
+    except Exception as e: pass
 
 def parse_api_response(text):
     if not text: return None
     try: return json.loads(text)
-    except:
+    except Exception as e:
         for line in text.split('\n'):
             if line.strip().startswith('data:'):
                 try: return json.loads(line.strip()[5:])
-                except: pass
+                except Exception as e: pass
     return None
 
 # ==========================================
@@ -207,40 +205,47 @@ if not card_info:
 user_key = query_key
 GRSAI_API_KEY = st.secrets.get((card_info.get('api_secret_name') or "API_VIP888").strip("'").strip(), "")
 
+# 🌟 修复：彻底分离 try...except 和 st.rerun()
 def auto_poll_task(task_id, active_user_key, model_used, start_time, src_urls=None):
     ph = st.empty()
     headers = {"Authorization": f"Bearer {GRSAI_API_KEY}", "Content-Type": "application/json"}
+    
     for i in range(300):
         p = min(5 + int((time.time() - start_time) * 0.2), 98) 
         ph.markdown(f'<div style="background:#111;border-radius:10px;padding:4px;border:1px solid #333;"><div style="height:12px;border-radius:6px;background:linear-gradient(90deg,#00c2ff,#00ffd5);width:{p}%;"></div></div><div style="text-align:right;color:#00ffd5;font-size:12px;margin-top:4px;">⚡ 任务执行中... {p}%</div>', unsafe_allow_html=True)
+        
+        should_rerun = False
+        
         try:
             resp = requests.post("https://grsai.dakka.com.cn/v1/draw/result", headers=headers, json={"id": task_id}, verify=False, timeout=10)
             q_res = parse_api_response(resp.text)
+            
             if q_res and isinstance(q_res, dict):
                 status = str(q_res.get("status", "")).lower()
                 data_obj = q_res.get("data")
                 if isinstance(data_obj, dict):
                     status = str(data_obj.get("status", status)).lower()
                 
-                # 🌟 违禁词与错误拦截增强逻辑
+                # 强效错误拦截
                 if str(q_res.get("error", "")) or str(q_res.get("failure_reason", "")):
                     status = "failed"
                 if isinstance(data_obj, dict) and (str(data_obj.get("error", "")) or str(data_obj.get("failure_reason", ""))):
                     status = "failed"
-                if str(q_res.get("code", "0")) != "0" and status not in ["running", "in_progress"]: 
+                if str(q_res.get("code", "0")) != "0" and status not in ["running", "in_progress", "submitted"]: 
                     status = "failed"
 
                 if status in ["succeeded", "success"]:
-                    deduct_balance(active_user_key, MODEL_COSTS.get(model_used, 600)); st.rerun(); return 
-                elif status in ["failed", "fail", "error"]:
-                    # 解析具体的失败原因，存入空白的 urls 字段中供 UI 读取 (不改数据库结构)
+                    deduct_balance(active_user_key, MODEL_COSTS.get(model_used, 600))
+                    should_rerun = True
+                elif status in ["failed", "fail", "error", "rejected"]:
+                    # 解析具体的失败原因
                     err_msg = str(q_res.get("error", ""))
                     fail_reason = str(q_res.get("failure_reason", ""))
                     if isinstance(data_obj, dict):
                         err_msg = err_msg or str(data_obj.get("error", ""))
                         fail_reason = fail_reason or str(data_obj.get("failure_reason", ""))
                     
-                    if "output_moderation" in fail_reason or "violated" in err_msg:
+                    if "output_moderation" in fail_reason or "violated" in err_msg or "content_policy" in err_msg:
                         final_err = "涉及违禁词"
                     elif err_msg:
                         final_err = err_msg
@@ -248,8 +253,15 @@ def auto_poll_task(task_id, active_user_key, model_used, start_time, src_urls=No
                         final_err = "未知错误"
                         
                     sync_task_to_db({"task_id": task_id, "status": "failed", "urls": [final_err]}, active_user_key)
-                    st.rerun(); return
-        except: pass 
+                    should_rerun = True
+        except Exception as e:
+            pass # 仅吃掉网络错误，绝对不能吃掉 st.rerun()
+            
+        # 安全触发刷新
+        if should_rerun:
+            st.rerun()
+            return
+            
         time.sleep(3)
 
 # ==========================================
@@ -299,6 +311,7 @@ with col_main:
         elif not prompt_txt and menu == "✍️ 文生图": st.error("❌ 请输入描述词")
         else:
             with st.spinner("🚀 任务分发中..."):
+                should_rerun = False
                 try:
                     final_ratio = "auto"
                     if menu == "✍️ 文生图":
@@ -316,23 +329,34 @@ with col_main:
                     payload = {"model": selected_model, "prompt": prompt_txt, "webHook": "-1", "shutProgress": True, "aspectRatio": final_ratio, "quality": quality if menu == "✍️ 文生图" else "auto"}
                     if menu == "🖼️ 图生图": payload["urls"] = uploaded_b64_urls 
                     resp = requests.post("https://grsai.dakka.com.cn/v1/draw/completions", headers={"Authorization": f"Bearer {GRSAI_API_KEY}", "Content-Type": "application/json"}, json=payload, verify=False, timeout=30)
+                    
                     if resp.status_code == 200:
                         api_res = parse_api_response(resp.text)
                         tid = api_res.get("data", {}).get("id") if api_res and api_res.get("code") == 0 else api_res.get("id") if api_res else None
                         if tid:
                             sync_task_to_db({"task_id": tid, "timestamp": time.time(), "time_str": datetime.now(BJ_TZ).strftime("%H:%M"), "prompt": prompt_txt, "status": "running", "urls": [], "model": selected_model, "src_urls": uploaded_b64_urls if menu=="🖼️ 图生图" else None}, user_key)
-                            st.rerun() 
-                except: st.error("💥 提交任务失败")
+                            should_rerun = True
+                        else:
+                            # 捕获提交即拦截的报错
+                            err_txt = api_res.get("error", "API未返回有效ID") if api_res else "API格式异常"
+                            if "violated" in str(err_txt): err_txt = "涉及违禁词"
+                            st.error(f"❌ 提交被拒绝: {err_txt}")
+                    else: 
+                        st.error(f"📡 API 服务器异常 (状态码: {resp.status_code})")
+                except Exception as e: 
+                    st.error(f"💥 网络请求错误: {str(e)}")
+                    
+                # 独立执行 Rerun，防止被 except 吃掉
+                if should_rerun:
+                    st.rerun()
 
 # ==========================================
 # 5. 右侧渲染：当前创作 vs 永久历史记录库
 # ==========================================
 with col_history:
-    # 🌟 双模式 Tab，干净分离当前工作区与永久历史区
     tab_current, tab_history = st.tabs(["🗂️ 创作记录", "🗄️ 历史记录"])
     
     tasks = fetch_tasks_from_db(user_key)
-    # 利用状态前缀做本地路由隔离，完全不改数据库字段！
     active_tasks = [t for t in tasks if not t['status'].startswith('history_')]
     history_tasks = [t for t in tasks if t['status'].startswith('history_')]
 
@@ -342,7 +366,6 @@ with col_history:
             return
         with st.container(height=650):
             for item in task_list:
-                # 剥离伪装状态，还原渲染
                 real_status = item['status'].replace('history_', '')
                 m_badge = "👑 VIP" if item.get('model') == 'gpt-image-2-vip' else "普"
                 st.markdown(f"**[{item['time_str']}]** `{m_badge}` 💡 {item['prompt'][:12]}...")
@@ -376,10 +399,9 @@ with col_history:
                             else: show_viewer_dialog(url)
                         st.markdown('</div>', unsafe_allow_html=True)
                 elif real_status == 'failed':
-                    # 🌟 捕获隐藏在 urls 里的具体错误信息 (无需增加错误表字段)
                     err_text = item.get('urls', [])
                     if err_text and len(err_text) > 0:
-                        if err_text[0] == "涉及违禁词":
+                        if "违禁" in err_text[0]:
                             st.error("❌ 生成失败，涉及违禁词")
                         else:
                             st.error(f"❌ 生成失败: {err_text[0][:30]}...")
